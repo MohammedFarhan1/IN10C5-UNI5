@@ -14,8 +14,23 @@ type SidebarProps = {
   items: SidebarItem[];
 };
 
+function getActiveHref(pathname: string, items: SidebarItem[]) {
+  const exactMatch = items.find((item) => item.href === pathname);
+
+  if (exactMatch) {
+    return exactMatch.href;
+  }
+
+  const nestedMatches = items
+    .filter((item) => pathname.startsWith(`${item.href}/`))
+    .sort((left, right) => right.href.length - left.href.length);
+
+  return nestedMatches[0]?.href ?? null;
+}
+
 export function Sidebar({ title, items }: SidebarProps) {
   const pathname = usePathname();
+  const activeHref = getActiveHref(pathname, items);
 
   return (
     <aside className="rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-soft sm:rounded-[28px] sm:p-5">
@@ -24,8 +39,7 @@ export function Sidebar({ title, items }: SidebarProps) {
       </p>
       <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:mt-5 lg:block lg:space-y-2 lg:overflow-visible lg:pb-0">
         {items.map((item) => {
-          const isActive =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = activeHref === item.href;
 
           return (
             <Link

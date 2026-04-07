@@ -12,7 +12,7 @@ const slides = [
     description:
       "Sample banner image for homepage offers. Replace this with your promotional creative any time.",
     image:
-      "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1600&q=80",
+      "/images/men-banner.jpg",
     accent: "from-black/70 via-black/30 to-transparent"
   },
   {
@@ -21,7 +21,7 @@ const slides = [
     description:
       "Highlight new inventory, launch campaigns, or seasonal promotions here with your own uploaded banner.",
     image:
-      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1600&q=80",
+      "/images/banner-3.jpg",
     accent: "from-emerald-950/70 via-emerald-900/30 to-transparent"
   },
   {
@@ -30,7 +30,7 @@ const slides = [
     description:
       "Use this slider area for sample images now, then swap in real offer artwork later.",
     image:
-      "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1600&q=80",
+      "/images/offers-banner-sample-3.jpg",
     accent: "from-slate-950/75 via-slate-900/35 to-transparent"
   }
 ];
@@ -50,7 +50,7 @@ export function OffersBanner() {
 
   return (
     <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/70 shadow-soft sm:rounded-[36px]">
-      <div className="relative h-[320px] sm:h-[420px] lg:h-[460px]">
+      <div className="relative h-[280px] sm:h-[360px] lg:h-[380px]">
         {slides.map((slide, index) => (
           <div
             className={cn(
@@ -70,21 +70,21 @@ export function OffersBanner() {
           </div>
         ))}
 
-        <div className="relative z-10 flex h-full flex-col justify-between p-4 text-white sm:p-6 md:p-10">
+        <div className="relative z-10 flex h-full flex-col justify-between p-4 text-white sm:p-5 md:p-8">
           <div className="max-w-2xl">
             <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-gold sm:text-xs sm:tracking-[0.34em]">
               Offers banner
             </p>
-            <h1 className="mt-3 max-w-[16rem] text-2xl font-semibold leading-tight sm:mt-4 sm:max-w-2xl sm:text-4xl md:text-6xl">
+            <h1 className="mt-3 max-w-[16rem] text-2xl font-semibold leading-tight sm:mt-4 sm:max-w-2xl sm:text-4xl md:text-5xl">
               {activeSlide.title}
             </h1>
             <p className="mt-2 text-sm font-medium text-slate-100 sm:mt-3 sm:text-lg">
               {activeSlide.subtitle}
             </p>
-            <p className="mt-3 max-w-[18rem] text-xs leading-5 text-slate-200 sm:mt-4 sm:max-w-xl sm:text-sm sm:leading-7 md:text-base">
+            <p className="mt-3 hidden max-w-[18rem] text-xs leading-5 text-slate-200 sm:mt-4 sm:block sm:max-w-xl sm:text-sm sm:leading-6 md:text-base">
               {activeSlide.description}
             </p>
-            <div className="mt-5 flex flex-wrap gap-2 sm:mt-8 sm:gap-3">
+            <div className="mt-4 flex flex-wrap gap-2 sm:mt-6 sm:gap-3">
               <Link className="w-full sm:w-auto" href="/signup">
                 <Button className="w-full bg-brand-gold text-brand-ink hover:bg-[#e0b55d] sm:w-auto">
                   Start selling
@@ -101,7 +101,7 @@ export function OffersBanner() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-4 pt-6 sm:pt-8">
+          <div className="flex items-center justify-between gap-4 pt-4 sm:pt-6">
             <div className="flex items-center gap-2">
               {slides.map((slide, index) => (
                 <button

@@ -32,7 +32,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
           </p>
           <h1 className="text-3xl font-semibold text-brand-ink">Confirm your tracked unit purchase</h1>
           <p className="text-sm leading-7 text-slate-600">
-            This flow assigns exactly one available unit from the selected product and creates a linked order record.
+            Choose how many units you want, and the system will assign that many available tracked units into one grouped order.
           </p>
           <div className="rounded-[24px] bg-slate-50 p-4">
             <p className="text-sm font-medium text-brand-ink">{product.name}</p>
@@ -53,10 +53,15 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
             <p className="mt-2 text-3xl font-semibold text-brand-pine">
               {formatCurrency(product.price)}
             </p>
+            <p className="mt-1 text-xs text-slate-500">Price shown per unit.</p>
           </div>
 
           {availableUnits > 0 ? (
-            <CheckoutForm action={createOrderAction} productId={product.id} />
+            <CheckoutForm
+              action={createOrderAction}
+              availableUnits={availableUnits}
+              productId={product.id}
+            />
           ) : (
             <Button className="w-full" disabled>
               No units available

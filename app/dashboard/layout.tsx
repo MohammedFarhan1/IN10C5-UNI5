@@ -5,6 +5,7 @@ const sellerNav = [
   { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/products", label: "Products" },
   { href: "/dashboard/products/add", label: "Add product" },
+  { href: "/dashboard/products/bulk-upload", label: "Bulk upload" },
   { href: "/dashboard/orders", label: "Orders" }
 ];
 

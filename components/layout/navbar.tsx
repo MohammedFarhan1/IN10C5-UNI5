@@ -46,9 +46,14 @@ export function Navbar({ email, role }: NavbarProps) {
             </Link>
           ) : null}
           {role === "customer" ? (
-            <Link href="/orders">
-              <Button className="px-3 py-2 text-xs sm:text-sm" variant="ghost">My orders</Button>
-            </Link>
+            <>
+              <Link href="/account">
+                <Button className="px-3 py-2 text-xs sm:text-sm" variant="ghost">Account</Button>
+              </Link>
+              <Link href="/orders">
+                <Button className="px-3 py-2 text-xs sm:text-sm" variant="ghost">My orders</Button>
+              </Link>
+            </>
           ) : null}
           {role === "admin" ? (
             <Link href="/admin">
@@ -73,7 +78,7 @@ export function Navbar({ email, role }: NavbarProps) {
             </>
           )}
 
-          {email ? (
+          {email && role !== "customer" ? (
             <p className="hidden rounded-full bg-white px-3 py-2 text-xs text-slate-500 md:block">
               {email}
             </p>
@@ -83,3 +88,4 @@ export function Navbar({ email, role }: NavbarProps) {
     </header>
   );
 }
+

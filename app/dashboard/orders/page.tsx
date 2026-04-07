@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/empty-state";
+import { OrderStatusForm } from "@/components/forms/order-status-form";
 import { Table } from "@/components/ui/table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
+import { updateOrderStatusAction } from "@/lib/actions/orders";
 import { getSellerOrders } from "@/lib/data";
 import { requireRole } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
@@ -27,7 +29,7 @@ export default async function SellerOrdersPage() {
           title="No orders yet"
         />
       ) : (
-        <Table headers={["Product", "Buyer", "Unit code", "Status", "Date"]}>
+        <Table headers={["Product", "Buyer", "Unit code", "Status", "Date", "Tracking update"]}>
           {orders.map((order) => (
             <tr key={order.id}>
               <td className="px-5 py-4 font-medium text-brand-ink">{order.product?.name}</td>
@@ -45,6 +47,9 @@ export default async function SellerOrdersPage() {
                 <StatusBadge value={order.status} />
               </td>
               <td className="px-5 py-4 text-slate-600">{formatDate(order.created_at)}</td>
+              <td className="px-5 py-4">
+                <OrderStatusForm action={updateOrderStatusAction} orderId={order.id} status={order.status} />
+              </td>
             </tr>
           ))}
         </Table>

@@ -23,11 +23,23 @@ export function ProductEditForm({ action, product }: ProductEditFormProps) {
       <input name="product_id" type="hidden" value={product.id} />
 
       <div className="grid gap-5 md:grid-cols-2">
-        <div className="space-y-2 md:col-span-2">
+        <div className="space-y-2">
           <label className="text-sm font-medium text-slate-700" htmlFor="name">
             Product name
           </label>
           <Input defaultValue={product.name} id="name" name="name" required />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-700" htmlFor="custom_product_id_readonly">
+            Custom product ID
+          </label>
+          <Input
+            defaultValue={product.custom_product_id ?? "Generated product only"}
+            disabled
+            id="custom_product_id_readonly"
+            name="custom_product_id_readonly"
+          />
         </div>
 
         <div className="space-y-2 md:col-span-2">

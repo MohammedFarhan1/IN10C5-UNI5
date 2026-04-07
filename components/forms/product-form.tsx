@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,11 +21,18 @@ export function ProductForm({ action }: ProductFormProps) {
   return (
     <form action={formAction} className="space-y-5">
       <div className="grid gap-5 md:grid-cols-2">
-        <div className="space-y-2 md:col-span-2">
+        <div className="space-y-2">
           <label className="text-sm font-medium text-slate-700" htmlFor="name">
             Product name
           </label>
           <Input id="name" name="name" placeholder="Limited edition coffee dripper" required />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-700" htmlFor="custom_product_id">
+            Custom product ID
+          </label>
+          <Input id="custom_product_id" name="custom_product_id" placeholder="DRIPPER-001" />
         </div>
 
         <div className="space-y-2 md:col-span-2">
@@ -65,6 +73,14 @@ export function ProductForm({ action }: ProductFormProps) {
             type="url"
           />
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        Need to create a whole catalog at once?{" "}
+        <Link className="font-medium text-brand-pine hover:text-brand-ink" href="/dashboard/products/bulk-upload">
+          Use Bulk upload
+        </Link>
+        .
       </div>
 
       {state.error ? (

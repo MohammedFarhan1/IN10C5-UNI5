@@ -15,7 +15,7 @@ export async function getCurrentSession() {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("id, email, role, created_at")
+    .select("id, email, role, full_name, mobile_number, address, created_at")
     .eq("id", user.id)
     .maybeSingle();
 
