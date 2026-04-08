@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Table } from "@/components/ui/table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
+import { CancelOrderButton } from "@/components/cart/cancel-order-button";
 import { getBuyerOrderGroups } from "@/lib/data";
 import { requireRole } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -30,7 +31,7 @@ export default async function OrdersPage() {
         </div>
       ) : (
         <div className="mt-8">
-          <Table headers={["Product", "Quantity", "Units", "Status", "Date", "Amount"]}>
+          <Table headers={["Product", "Quantity", "Units", "Status", "Date", "Amount", "Actions"]}>
             {orders.map((order) => (
               <tr key={order.order_group_id}>
                 <td className="px-5 py-4">
@@ -64,6 +65,13 @@ export default async function OrdersPage() {
                 <td className="px-5 py-4 text-slate-600">{formatDate(order.created_at)}</td>
                 <td className="px-5 py-4 font-medium text-brand-ink">
                   {formatCurrency(order.total_amount)}
+                </td>
+                <td className="px-5 py-4">
+                  {order.status === "ordered" ? (
+                    <CancelOrderButton orderGroupId={order.order_group_id} />
+                  ) : (
+                    <span className="text-xs text-slate-500">No actions available</span>
+                  )}
                 </td>
               </tr>
             ))}

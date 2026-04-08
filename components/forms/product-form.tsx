@@ -4,18 +4,19 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ActionState } from "@/types";
+import { ActionState, Category } from "@/types";
 
 type ProductFormProps = {
   action: (
     prevState: ActionState,
     formData: FormData
   ) => Promise<ActionState>;
+  categories: Category[];
 };
 
 const initialState: ActionState = {};
 
-export function ProductForm({ action }: ProductFormProps) {
+export function ProductForm({ action, categories }: ProductFormProps) {
   const [state, formAction, pending] = useActionState(action, initialState);
 
   return (
@@ -72,6 +73,25 @@ export function ProductForm({ action }: ProductFormProps) {
             placeholder="https://images.example.com/product.jpg"
             type="url"
           />
+        </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-sm font-medium text-slate-700" htmlFor="categories">
+            Categories
+          </label>
+          <select
+            id="categories"
+            name="categories"
+            multiple
+            className="min-h-36 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-sm text-brand-ink outline-none transition placeholder:text-slate-400 focus:border-brand-gold focus:ring-2 focus:ring-brand-gold/20"
+          >
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-500">Hold Ctrl (Cmd on Mac) to select multiple categories</p>
         </div>
       </div>
 

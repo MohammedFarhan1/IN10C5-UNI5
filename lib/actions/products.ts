@@ -265,6 +265,19 @@ async function collectBulkProducts(formData: FormData) {
   return products;
 }
 
+function sanitizeSkuBase(value: string) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function buildUnitCode(base: string, productId: string, index: number) {
+  const prefix = sanitizeSkuBase(base) || `SKU-${productId.slice(0, 8).toUpperCase()}`;
+  return `${prefix}-${String(index + 1).padStart(3, "0")}`;
+}
+
 async function createProductWithUnits(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   sellerId: string,
@@ -276,6 +289,7 @@ async function createProductWithUnits(
     imageUrl: string | null;
     totalUnits: number;
     units?: ImportedUnitRecord[];
+    categoryIds?: string[];
   }
 ) {
   const { data: product, error: productError } = await supabase
@@ -299,9 +313,10 @@ async function createProductWithUnits(
   }
 
   const configuredUnits = input.units ?? [];
+  const skuBase = input.customProductId || input.name;
   const units = Array.from({ length: input.totalUnits }, (_, index) => ({
     product_id: product.id,
-    unit_code: crypto.randomUUID(),
+    unit_code: buildUnitCode(skuBase, product.id, index),
     custom_unit_id: configuredUnits[index]?.unitId ?? null,
     details: configuredUnits[index]?.details ?? null,
     status: "available" as const
@@ -312,6 +327,23 @@ async function createProductWithUnits(
   if (unitsError) {
     await supabase.from("products").delete().eq("id", product.id);
     return { error: unitsError.message };
+  }
+
+  if (input.categoryIds && input.categoryIds.length > 0) {
+    const productCategories = input.categoryIds.map((categoryId) => ({
+      product_id: product.id,
+      category_id: categoryId
+    }));
+
+    const { error: categoriesError } = await supabase
+      .from("product_categories")
+      .insert(productCategories);
+
+    if (categoriesError) {
+      await supabase.from("product_units").delete().eq("product_id", product.id);
+      await supabase.from("products").delete().eq("id", product.id);
+      return { error: categoriesError.message };
+    }
   }
 
   return { productId: product.id };
@@ -329,6 +361,7 @@ export async function createProductAction(
   const imageUrl = String(formData.get("image_url") ?? "").trim();
   const price = Number(formData.get("price") ?? 0);
   const totalUnits = Number(formData.get("total_units") ?? 0);
+  const categoryIds = formData.getAll("categories").map(String);
 
   if (!name || !description) {
     return { error: "Name and description are required." };
@@ -343,13 +376,31 @@ export async function createProductAction(
   }
 
   const supabase = await createSupabaseServerClient();
+
+  if (customProductId) {
+    const { data: existingProduct, error: existingProductError } = await supabase
+      .from("products")
+      .select("id")
+      .eq("custom_product_id", customProductId)
+      .maybeSingle();
+
+    if (existingProductError) {
+      return { error: existingProductError.message };
+    }
+
+    if (existingProduct) {
+      return { error: "This product ID is already in use. Please choose a different one." };
+    }
+  }
+
   const result = await createProductWithUnits(supabase, profile.id, {
     customProductId: customProductId || null,
     name,
     description,
     price,
     imageUrl: imageUrl || null,
-    totalUnits
+    totalUnits,
+    categoryIds
   });
 
   if ("error" in result) {
@@ -382,11 +433,12 @@ export async function bulkCreateProductsAction(
   }
 
   const supabase = await createSupabaseServerClient();
-  const customProductIds = parsedProducts.map((product) => product.customProductId);
+  const customProductIds = parsedProducts
+    .map((product) => String(product.customProductId ?? "").trim())
+    .filter(Boolean);
   const { data: existingProducts, error: existingProductsError } = await supabase
     .from("products")
     .select("custom_product_id")
-    .eq("seller_id", profile.id)
     .in("custom_product_id", customProductIds);
 
   if (existingProductsError) {
@@ -448,6 +500,7 @@ export async function updateProductAction(
   const description = String(formData.get("description") ?? "").trim();
   const imageUrl = String(formData.get("image_url") ?? "").trim();
   const price = Number(formData.get("price") ?? 0);
+  const categoryIds = formData.getAll("categories").map(String);
 
   if (!productId || !name || !description) {
     return { error: "Product, name, and description are required." };
@@ -471,6 +524,24 @@ export async function updateProductAction(
 
   if (error) {
     return { error: error.message };
+  }
+
+  // Update categories
+  await supabase.from("product_categories").delete().eq("product_id", productId);
+
+  if (categoryIds.length > 0) {
+    const productCategories = categoryIds.map((categoryId) => ({
+      product_id: productId,
+      category_id: categoryId
+    }));
+
+    const { error: categoriesError } = await supabase
+      .from("product_categories")
+      .insert(productCategories);
+
+    if (categoriesError) {
+      return { error: categoriesError.message };
+    }
   }
 
   redirect("/dashboard/products");

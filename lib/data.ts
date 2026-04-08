@@ -1,4 +1,6 @@
 import {
+  CartItem,
+  Category,
   OrderStatus,
   OrderGroupSummary,
   OrderWithDetails,
@@ -16,6 +18,7 @@ type HomepageProductFilters = {
   stock?: "all" | "in_stock" | "sold_out";
   maxPrice?: number;
   sort?: "newest" | "price_asc" | "price_desc";
+  category?: string;
 };
 
 type RawRecord = Record<string, unknown>;
@@ -143,6 +146,15 @@ function mapUnit(record: RawRecord): ProductUnit {
   };
 }
 
+function mapCategory(record: RawRecord): Category {
+  return {
+    id: asString(record.id),
+    name: asString(record.name),
+    description: asNullableString(record.description),
+    created_at: asString(record.created_at)
+  };
+}
+
 function mapProduct(record: RawRecord): ProductWithDetails {
   return {
     id: asString(record.id),
@@ -155,7 +167,20 @@ function mapProduct(record: RawRecord): ProductWithDetails {
     total_units: asNumber(record.total_units),
     created_at: asString(record.created_at),
     seller: mapUserPreview(record.seller),
-    units: asRecords(record.units).map(mapUnit)
+    units: asRecords(record.units).map(mapUnit),
+    categories: asRecords(record.categories).map((pc) => mapCategory(asRecord(pc)?.categories as RawRecord))
+  };
+}
+
+function mapCartItem(record: RawRecord): CartItem {
+  return {
+    id: asString(record.id),
+    user_id: asString(record.user_id),
+    product_id: asString(record.product_id),
+    quantity: asNumber(record.quantity),
+    created_at: asString(record.created_at),
+    updated_at: asString(record.updated_at),
+    product: record.product ? mapProduct(asRecord(record.product)!) : undefined
   };
 }
 
@@ -238,6 +263,10 @@ function deriveGroupStatus(statuses: OrderStatus[]): OrderGroupSummary["status"]
     return "ordered";
   }
 
+  if (statuses.every((status) => status === "cancelled")) {
+    return "cancelled";
+  }
+
   if (statuses.every((status) => status === "delivered")) {
     return "delivered";
   }
@@ -246,11 +275,29 @@ function deriveGroupStatus(statuses: OrderStatus[]): OrderGroupSummary["status"]
     return "ordered";
   }
 
+  if (statuses.every((status) => status === "ordered" || status === "cancelled")) {
+    return "ordered";
+  }
+
   if (statuses.every((status) => status === "shipped" || status === "delivered")) {
     return "shipped";
   }
 
   return "partially_shipped";
+}
+
+export async function getCategories() {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("categories")
+    .select("*")
+    .order("name");
+
+  if (error) {
+    throw error;
+  }
+
+  return data.map(mapCategory);
 }
 
 export async function getHomepageProducts(filters: HomepageProductFilters = {}) {
@@ -281,6 +328,14 @@ export async function getHomepageProducts(filters: HomepageProductFilters = {}) 
         details,
         status,
         created_at
+      ),
+      categories:product_categories (
+        categories (
+          id,
+          name,
+          description,
+          created_at
+        )
       )
     `
     )
@@ -294,6 +349,12 @@ export async function getHomepageProducts(filters: HomepageProductFilters = {}) 
 
   const { data } = await query;
   let products = asRecords(data).map(mapProduct);
+
+  if (filters.category) {
+    products = products.filter((product) =>
+      product.categories?.some((category) => category.id === filters.category)
+    );
+  }
 
   if (typeof filters.maxPrice === "number" && Number.isFinite(filters.maxPrice)) {
     products = products.filter((product) => product.price <= filters.maxPrice!);
@@ -350,6 +411,14 @@ export async function getProductById(productId: string) {
         details,
         status,
         created_at
+      ),
+      categories:product_categories (
+        categories (
+          id,
+          name,
+          description,
+          created_at
+        )
       )
     `
     )
@@ -383,6 +452,14 @@ export async function getSellerProducts(sellerId: string, search?: string) {
         details,
         status,
         created_at
+      ),
+      categories:product_categories (
+        categories (
+          id,
+          name,
+          description,
+          created_at
+        )
       )
     `
     )
@@ -712,4 +789,161 @@ export async function getAdminSummary() {
     productCount: productCount ?? 0,
     orderCount: orderCount ?? 0
   };
+}
+
+export async function getCartItems(userId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("cart_items")
+    .select(
+      `
+      id,
+      user_id,
+      product_id,
+      quantity,
+      created_at,
+      updated_at,
+      product:products (
+        id,
+        seller_id,
+        custom_product_id,
+        name,
+        description,
+        price,
+        image_url,
+        total_units,
+        created_at,
+        seller:users!products_seller_id_fkey (
+          id,
+          email,
+          role
+        ),
+        units:product_units (
+          id,
+          product_id,
+          unit_code,
+          custom_unit_id,
+          details,
+          status,
+          created_at
+        ),
+        categories:product_categories (
+          categories (
+            id,
+            name,
+            description,
+            created_at
+          )
+        )
+      )
+    `
+    )
+    .eq("user_id", userId)
+    .order("created_at");
+
+  if (error) {
+    throw error;
+  }
+
+  return data.map(mapCartItem);
+}
+
+export async function addToCart(userId: string, productId: string, quantity: number = 1) {
+  const supabase = await createSupabaseServerClient();
+
+  // First, check if the item already exists in the cart
+  const { data: existingItem, error: fetchError } = await supabase
+    .from("cart_items")
+    .select("quantity")
+    .eq("user_id", userId)
+    .eq("product_id", productId)
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "not found"
+    throw fetchError;
+  }
+
+  if (existingItem) {
+    // Update existing item by adding quantities
+    const newQuantity = existingItem.quantity + quantity;
+    const { data, error } = await supabase
+      .from("cart_items")
+      .update({ quantity: newQuantity })
+      .eq("user_id", userId)
+      .eq("product_id", productId)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return mapCartItem(data);
+  } else {
+    // Insert new item
+    const { data, error } = await supabase
+      .from("cart_items")
+      .insert({
+        user_id: userId,
+        product_id: productId,
+        quantity
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return mapCartItem(data);
+  }
+}
+
+export async function updateCartItem(cartItemId: string, quantity: number) {
+  const supabase = await createSupabaseServerClient();
+  if (quantity <= 0) {
+    const { error } = await supabase
+      .from("cart_items")
+      .delete()
+      .eq("id", cartItemId);
+    if (error) throw error;
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("cart_items")
+    .update({ quantity })
+    .eq("id", cartItemId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapCartItem(data);
+}
+
+export async function removeFromCart(cartItemId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("cart_items")
+    .delete()
+    .eq("id", cartItemId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function clearCart(userId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("cart_items")
+    .delete()
+    .eq("user_id", userId);
+
+  if (error) {
+    throw error;
+  }
 }

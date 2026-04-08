@@ -47,6 +47,9 @@ export function Navbar({ email, role }: NavbarProps) {
           ) : null}
           {role === "customer" ? (
             <>
+              <Link href="/cart">
+                <Button className="px-3 py-2 text-xs sm:text-sm" variant="ghost">Cart</Button>
+              </Link>
               <Link href="/account">
                 <Button className="px-3 py-2 text-xs sm:text-sm" variant="ghost">Account</Button>
               </Link>

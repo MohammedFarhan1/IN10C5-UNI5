@@ -4,8 +4,11 @@ import { ProductForm } from "@/components/forms/product-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { createProductAction } from "@/lib/actions/products";
+import { getCategories } from "@/lib/data";
 
-export default function AddProductPage() {
+export default async function AddProductPage() {
+  const categories = await getCategories();
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -20,7 +23,7 @@ export default function AddProductPage() {
       />
 
       <Card>
-        <ProductForm action={createProductAction} />
+        <ProductForm action={createProductAction} categories={categories} />
       </Card>
     </div>
   );

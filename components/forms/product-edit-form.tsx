@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ActionState, ProductWithDetails } from "@/types";
+import { ActionState, Category, ProductWithDetails } from "@/types";
 
 type ProductEditFormProps = {
   action: (
@@ -11,11 +11,12 @@ type ProductEditFormProps = {
     formData: FormData
   ) => Promise<ActionState>;
   product: ProductWithDetails;
+  categories: Category[];
 };
 
 const initialState: ActionState = {};
 
-export function ProductEditForm({ action, product }: ProductEditFormProps) {
+export function ProductEditForm({ action, product, categories }: ProductEditFormProps) {
   const [state, formAction, pending] = useActionState(action, initialState);
 
   return (
@@ -95,6 +96,29 @@ export function ProductEditForm({ action, product }: ProductEditFormProps) {
             name="image_url"
             type="url"
           />
+        </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-sm font-medium text-slate-700" htmlFor="categories">
+            Categories
+          </label>
+          <select
+            id="categories"
+            name="categories"
+            multiple
+            defaultValue={product.categories?.map(c => c.id) || []}
+            className="min-h-36 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-sm text-brand-ink outline-none transition placeholder:text-slate-400 focus:border-brand-gold focus:ring-2 focus:ring-brand-gold/20"
+          >
+            {categories.map((category) => (
+              <option
+                key={category.id}
+                value={category.id}
+              >
+                {category.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-500">Hold Ctrl (Cmd on Mac) to select multiple categories</p>
         </div>
       </div>
 

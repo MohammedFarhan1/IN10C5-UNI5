@@ -32,6 +32,7 @@ export function OrderStatusForm({ action, orderId, status }: OrderStatusFormProp
         <option value="ordered">Ordered</option>
         <option value="shipped">Shipped</option>
         <option value="delivered">Delivered</option>
+        <option value="cancelled">Cancelled</option>
       </select>
       <SubmitButton />
     </form>

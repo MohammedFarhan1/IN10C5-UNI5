@@ -3,7 +3,7 @@ import { ProductCard } from "@/components/products/product-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { getHomepageProducts } from "@/lib/data";
+import { getCategories, getHomepageProducts } from "@/lib/data";
 
 type HomePageProps = {
   searchParams?: Promise<{
@@ -11,6 +11,7 @@ type HomePageProps = {
     stock?: string;
     sort?: string;
     maxPrice?: string;
+    category?: string;
   }>;
 };
 
@@ -30,13 +31,16 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     typeof maxPrice === "number" && Number.isFinite(maxPrice) && maxPrice > 0
       ? maxPrice
       : undefined;
+  const category = params?.category?.trim() ?? "";
 
   const products = await getHomepageProducts({
     search: query,
     stock,
     sort,
-    maxPrice: safeMaxPrice
+    maxPrice: safeMaxPrice,
+    category: category || undefined
   });
+  const categories = await getCategories();
 
   return (
     <div className="mx-auto max-w-7xl px-3 py-6 sm:px-4 md:px-6 lg:px-8 lg:py-8">
@@ -61,7 +65,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         </div>
 
         <Card className="mt-6">
-          <form className="grid gap-4 sm:grid-cols-2 md:grid-cols-[1.1fr_180px_180px_140px_auto] md:items-end">
+          <form className="grid gap-4 sm:grid-cols-2 md:grid-cols-[1.1fr_180px_180px_180px_140px_auto] md:items-end">
             {query ? <input name="q" type="hidden" value={query} /> : null}
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700" htmlFor="maxPrice">
@@ -75,6 +79,25 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 placeholder="e.g. 3000"
                 type="number"
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="category">
+                Category
+              </label>
+              <select
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-brand-ink outline-none focus:border-brand-gold focus:ring-2 focus:ring-brand-gold/20"
+                defaultValue={category}
+                id="category"
+                name="category"
+              >
+                <option value="">All categories</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">

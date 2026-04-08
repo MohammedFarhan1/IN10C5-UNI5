@@ -23,7 +23,7 @@ begin
   if not exists (
     select 1 from pg_type where typname = 'order_status' and typnamespace = 'public'::regnamespace
   ) then
-    create type public.order_status as enum ('ordered', 'shipped', 'delivered');
+    create type public.order_status as enum ('ordered', 'shipped', 'delivered', 'cancelled');
   end if;
 end $$;
 
@@ -82,6 +82,7 @@ alter table public.orders add column if not exists order_group_id uuid not null 
 
 create index if not exists idx_products_seller_id on public.products (seller_id);
 create unique index if not exists idx_products_seller_custom_product_id on public.products (seller_id, custom_product_id) where custom_product_id is not null;
+create unique index if not exists idx_products_custom_product_id on public.products (custom_product_id) where custom_product_id is not null;
 create index if not exists idx_product_units_product_id on public.product_units (product_id);
 create index if not exists idx_product_units_status on public.product_units (status);
 create unique index if not exists idx_product_units_product_custom_unit_id on public.product_units (product_id, custom_unit_id) where custom_unit_id is not null;
@@ -318,6 +319,17 @@ create policy "sellers and admins can update related orders"
       select 1
       from public.products p
       where p.id = product_id and p.seller_id = auth.uid()
+    )
+  );
+
+drop policy if exists "customers can insert orders" on public.orders;
+create policy "customers can insert orders"
+  on public.orders for insert
+  with check (
+    buyer_id = auth.uid()
+    and exists (
+      select 1 from public.users
+      where id = auth.uid() and role = 'customer'
     )
   );
 

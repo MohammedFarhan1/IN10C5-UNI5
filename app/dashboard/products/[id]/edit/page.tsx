@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Table } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { requireRole } from "@/lib/auth";
-import { getSellerOwnedProduct } from "@/lib/data";
+import { getCategories, getSellerOwnedProduct } from "@/lib/data";
 import { importProductUnitsAction, updateProductAction } from "@/lib/actions/products";
 import {
   formatCurrency,
@@ -29,6 +29,7 @@ export default async function SellerEditProductPage({
   const { profile } = await requireRole(["seller"]);
   const { id } = await params;
   const product = await getSellerOwnedProduct(id, profile.id);
+  const categories = await getCategories();
 
   if (!product) {
     notFound();
@@ -52,7 +53,7 @@ export default async function SellerEditProductPage({
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
         <Card>
-          <ProductEditForm action={updateProductAction} product={product} />
+          <ProductEditForm action={updateProductAction} product={product} categories={categories} />
         </Card>
 
         <Card className="space-y-5">

@@ -1,7 +1,7 @@
 export type Role = "customer" | "seller" | "admin";
 
 export type ProductUnitStatus = "available" | "sold" | "delivered";
-export type OrderStatus = "ordered" | "shipped" | "delivered";
+export type OrderStatus = "ordered" | "shipped" | "delivered" | "cancelled";
 
 export type ActionState = {
   error?: string;
@@ -50,9 +50,27 @@ export type Order = {
   created_at: string;
 };
 
+export type Category = {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+};
+
+export type CartItem = {
+  id: string;
+  user_id: string;
+  product_id: string;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+  product?: ProductWithDetails;
+};
+
 export type ProductWithDetails = Product & {
   seller?: Pick<UserProfile, "id" | "email" | "role">;
   units?: ProductUnit[];
+  categories?: Category[];
 };
 
 export type OrderWithDetails = Order & {
@@ -69,7 +87,7 @@ export type OrderGroupSummary = {
   product_image_url: string | null;
   quantity: number;
   unit_codes: string[];
-  status: "ordered" | "shipped" | "delivered" | "partially_shipped";
+  status: "ordered" | "shipped" | "delivered" | "cancelled" | "partially_shipped";
   created_at: string;
   total_amount: number;
 };
