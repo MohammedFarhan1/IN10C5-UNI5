@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MarketplaceProductEditForm } from "@/components/forms/marketplace-product-edit-form";
+import { MarketplaceVariantManager } from "@/components/forms/marketplace-variant-manager";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { requireRole } from "@/lib/auth";
 import { getCategories } from "@/lib/data";
-import { updateMarketplaceProductAction } from "@/lib/actions/products";
+import { updateMarketplaceProductAction, updateMarketplaceVariantsAction } from "@/lib/actions/products";
 import { getMarketplaceSellerProductById } from "@/lib/marketplace";
 import { formatCurrency, formatDate, getProductDetailUrl, getQrCodeUrl } from "@/lib/utils";
 
@@ -115,10 +116,18 @@ export default async function SellerEditProductPage({
           </div>
 
           <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-3 text-xs text-slate-500">
-            Need to change seller SKU, price, MRP, or stock per variant? Those values stay at listing level and can be extended in a follow-up edit flow.
+            Update variant attributes and listing inventory below to keep catalog data current.
           </div>
         </Card>
       </div>
+
+      <Card>
+        <MarketplaceVariantManager
+          action={updateMarketplaceVariantsAction}
+          product={product}
+          categoryName={product.category?.name ?? null}
+        />
+      </Card>
     </div>
   );
 }

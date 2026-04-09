@@ -416,6 +416,73 @@ function parseVariantPayload(value: string) {
   });
 }
 
+
+function parseVariantEditPayload(value: string) {
+  let parsedValue: unknown;
+
+  try {
+    parsedValue = JSON.parse(value);
+  } catch {
+    throw new Error("The variant payload is not valid JSON.");
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    throw new Error("The variant payload must be a JSON array.");
+  }
+
+  return parsedValue.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`Variant ${index + 1} is invalid.`);
+    }
+
+    const record = item as Record<string, unknown>;
+    const variantId = String(record.variant_id ?? "").trim();
+    const listingId = String(record.listing_id ?? "").trim();
+    const customVariantId = String(record.custom_variant_id ?? "").trim();
+    const size = String(record.size ?? "").trim();
+    const color = String(record.color ?? "").trim();
+    const attributes = normalizeDetailMap(record.attributes ?? record.attribute_values ?? null);
+    const sellerSku = String(record.seller_sku ?? "").trim();
+    const price = Number(record.price ?? 0);
+    const mrp = Number(record.mrp ?? 0);
+    const stockQuantity = Number(record.stock_quantity ?? 0);
+
+    if (!attributes && !size && !color) {
+      throw new Error(
+        `Variant ${index + 1} must include attribute values or size/color information.`
+      );
+    }
+
+    if (!sellerSku) {
+      throw new Error(`Variant ${index + 1} is missing a seller SKU.`);
+    }
+
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error(`Variant ${index + 1} needs a valid selling price.`);
+    }
+
+    if (!Number.isFinite(mrp) || mrp < price) {
+      throw new Error(`Variant ${index + 1} needs an MRP greater than or equal to price.`);
+    }
+
+    if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      throw new Error(`Variant ${index + 1} needs a whole-number stock quantity.`);
+    }
+
+    return {
+      variant_id: variantId || null,
+      listing_id: listingId || null,
+      custom_variant_id: customVariantId || null,
+      size: size || null,
+      color: color || null,
+      attributes,
+      seller_sku: sellerSku,
+      price,
+      mrp,
+      stock_quantity: stockQuantity
+    };
+  });
+}
 function buildVariantName(variant: VariantCreatePayload) {
   const attributeEntries = Object.entries(variant.attributes ?? {}).filter(
     ([, value]) => value.trim().length > 0
@@ -959,6 +1026,192 @@ export async function updateProductAction(
   redirect("/dashboard/products");
 }
 
+
+export async function updateMarketplaceVariantsAction(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const { profile } = await requireRole(["seller"]);
+  const productId = String(formData.get("product_id") ?? "").trim();
+  const rawVariantsPayload = String(formData.get("variants_payload") ?? "").trim();
+
+  if (!productId) {
+    return { error: "Product ID is required." };
+  }
+
+  let variants: Array<
+    VariantCreatePayload & {
+      variant_id?: string | null;
+      listing_id?: string | null;
+    }
+  > = [];
+
+  try {
+    variants = parseVariantEditPayload(rawVariantsPayload);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Unable to read the variant payload."
+    };
+  }
+
+  if (variants.length === 0) {
+    return { error: "Add at least one variant before saving." };
+  }
+
+  const duplicateSellerSkus = variants
+    .map((variant) => variant.seller_sku)
+    .filter((sku, index, skus) => skus.indexOf(sku) !== index);
+
+  if (duplicateSellerSkus.length > 0) {
+    return {
+      error: `Seller SKUs must be unique. Duplicate values: ${Array.from(new Set(duplicateSellerSkus)).join(", ")}.`
+    };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: productRecord, error: productError } = await supabase
+    .schema("marketplace")
+    .from("products")
+    .select("id")
+    .eq("id", productId)
+    .eq("created_by", profile.id)
+    .maybeSingle();
+
+  if (productError) {
+    return { error: formatMarketplaceActionError(productError) };
+  }
+
+  if (!productRecord) {
+    return { error: "Product not found." };
+  }
+
+  const sellerSkus = variants.map((variant) => variant.seller_sku);
+  const listingIds = variants
+    .map((variant) => variant.listing_id)
+    .filter((listingId): listingId is string => Boolean(listingId));
+
+  const { data: existingListings, error: existingListingsError } = await supabase
+    .schema("marketplace")
+    .from("listings")
+    .select("id, seller_sku")
+    .eq("seller_id", profile.id)
+    .in("seller_sku", sellerSkus);
+
+  if (existingListingsError) {
+    return { error: formatMarketplaceActionError(existingListingsError) };
+  }
+
+  const conflictingSkus = (existingListings ?? [])
+    .filter((listing) => !listingIds.includes(String(listing.id)))
+    .map((listing) => String(listing.seller_sku ?? "").trim())
+    .filter(Boolean);
+
+  if (conflictingSkus.length > 0) {
+    return {
+      error: `These seller SKUs already exist in your catalog: ${conflictingSkus.join(", ")}.`
+    };
+  }
+
+  try {
+    for (const variant of variants) {
+      const variantAttributes = buildVariantAttributes(variant);
+      const variantSize = getAttributeValue(variantAttributes, "size") ?? variant.size ?? null;
+      const variantColor = getAttributeValue(variantAttributes, "color") ?? variant.color ?? null;
+      const variantName = buildVariantName({
+        ...variant,
+        attributes: variantAttributes
+      });
+
+      let variantId = variant.variant_id ?? null;
+
+      if (variantId) {
+        const { error: updateVariantError } = await supabase
+          .schema("marketplace")
+          .from("variants")
+          .update({
+            custom_variant_id: variant.custom_variant_id ?? null,
+            name: variantName,
+            size: variantSize,
+            color: variantColor,
+            attributes: variantAttributes
+          })
+          .eq("id", variantId)
+          .eq("product_id", productId);
+
+        if (updateVariantError) {
+          throw new Error(formatMarketplaceActionError(updateVariantError));
+        }
+      } else {
+        const { data: createdVariant, error: createVariantError } = await supabase
+          .schema("marketplace")
+          .from("variants")
+          .insert({
+            product_id: productId,
+            custom_variant_id: variant.custom_variant_id ?? null,
+            name: variantName,
+            size: variantSize,
+            color: variantColor,
+            attributes: variantAttributes
+          })
+          .select("id")
+          .single();
+
+        if (createVariantError || !createdVariant) {
+          throw new Error(formatMarketplaceActionError(createVariantError));
+        }
+
+        variantId = createdVariant.id;
+      }
+
+      if (variant.listing_id) {
+        const { error: updateListingError } = await supabase
+          .schema("marketplace")
+          .from("listings")
+          .update({
+            seller_sku: variant.seller_sku,
+            price: variant.price,
+            mrp: variant.mrp,
+            stock_on_hand: variant.stock_quantity,
+            status: "active"
+          })
+          .eq("id", variant.listing_id)
+          .eq("seller_id", profile.id);
+
+        if (updateListingError) {
+          throw new Error(formatMarketplaceActionError(updateListingError));
+        }
+      } else {
+        const { error: createListingError } = await supabase
+          .schema("marketplace")
+          .from("listings")
+          .insert({
+            variant_id: variantId,
+            seller_id: profile.id,
+            seller_sku: variant.seller_sku,
+            price: variant.price,
+            mrp: variant.mrp,
+            stock_on_hand: variant.stock_quantity,
+            fulfillment_type: "seller",
+            condition: "new",
+            status: "active"
+          });
+
+        if (createListingError) {
+          throw new Error(formatMarketplaceActionError(createListingError));
+        }
+      }
+    }
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Unable to update variants."
+    };
+  }
+
+  revalidatePath("/dashboard/products");
+  revalidatePath(`/dashboard/products/${productId}/edit`);
+  revalidatePath(`/product/${productId}`);
+  return { success: "Variants updated successfully." };
+}
 export async function updateMarketplaceProductAction(
   _prevState: ActionState,
   formData: FormData
@@ -1213,6 +1466,8 @@ export async function deleteSelectedProductsAction(
   revalidatePath("/dashboard/products");
   redirect(returnQuery ? `/dashboard/products?q=${encodeURIComponent(returnQuery)}` : "/dashboard/products");
 }
+
+
 
 
 
