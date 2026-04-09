@@ -3,11 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ActionState } from "@/types";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
-import { addToCart, updateCartItem, removeFromCart, clearCart, getCartItems } from "@/lib/data";
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
+import {
+  addMarketplaceItemToCart,
+  clearMarketplaceCart,
+  getMarketplaceCartItems,
+  placeMarketplaceOrder,
+  removeMarketplaceCartItem,
+  updateMarketplaceCartItem
+} from "@/lib/marketplace";
 
 export async function addToCartAction(
   _prevState: ActionState,
@@ -15,11 +19,11 @@ export async function addToCartAction(
 ): Promise<ActionState> {
   const { profile } = await requireRole(["customer"]);
 
-  const productId = String(formData.get("product_id") ?? "").trim();
+  const listingId = String(formData.get("listing_id") ?? "").trim();
   const quantity = Number(formData.get("quantity") ?? 1);
 
-  if (!productId) {
-    return { error: "Product ID is required." };
+  if (!listingId) {
+    return { error: "Select a seller option before adding this item to cart." };
   }
 
   if (!Number.isInteger(quantity) || quantity <= 0) {
@@ -27,7 +31,7 @@ export async function addToCartAction(
   }
 
   try {
-    await addToCart(profile.id, productId, quantity);
+    await addMarketplaceItemToCart(profile.id, listingId, quantity);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to add to cart." };
   }
@@ -54,7 +58,7 @@ export async function updateCartItemAction(
   }
 
   try {
-    await updateCartItem(cartItemId, quantity);
+    await updateMarketplaceCartItem(cartItemId, quantity);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to update cart item." };
   }
@@ -76,7 +80,7 @@ export async function removeFromCartAction(
   }
 
   try {
-    await removeFromCart(cartItemId);
+    await removeMarketplaceCartItem(cartItemId);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to remove from cart." };
   }
@@ -85,56 +89,32 @@ export async function removeFromCartAction(
   return { success: "Item removed from cart." };
 }
 
-export async function clearCartAction(
-  _formData: FormData
-): Promise<void> {
+export async function clearCartAction(): Promise<void> {
   const { profile } = await requireRole(["customer"]);
 
-  await clearCart(profile.id);
+  await clearMarketplaceCart(profile.id);
 
   revalidatePath("/cart");
 }
 
-export async function checkoutCartAction(
-  _formData: FormData
-): Promise<void> {
+export async function checkoutCartAction(): Promise<void> {
   const { profile } = await requireRole(["customer"]);
 
-  const cartItems = await getCartItems(profile.id);
+  const cartItems = await getMarketplaceCartItems(profile.id);
 
   if (cartItems.length === 0) {
     throw new Error("Cart is empty.");
   }
 
-  const supabase = await createSupabaseServerClient();
+  await placeMarketplaceOrder({
+    buyerId: profile.id,
+    items: cartItems.map((item) => ({
+      listing_id: item.listing_id,
+      quantity: item.quantity
+    }))
+  });
 
-  // Use the place_order_batch function for each cart item
-  for (const item of cartItems) {
-    if (!item.product) continue;
-
-    try {
-      const { data, error } = await supabase.rpc("place_order_batch", {
-        product_uuid: item.product_id,
-        buyer_uuid: profile.id,
-        quantity_int: item.quantity
-      });
-
-      if (error) {
-        throw new Error(`Failed to create order for ${item.product.name}: ${error.message}`);
-      }
-
-      if (!data) {
-        throw new Error(`Failed to create order for ${item.product.name}`);
-      }
-    } catch (error) {
-      throw new Error(
-        `Failed to process order: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
-    }
-  }
-
-  // Clear cart
-  await clearCart(profile.id);
+  await clearMarketplaceCart(profile.id);
 
   redirect("/orders");
 }

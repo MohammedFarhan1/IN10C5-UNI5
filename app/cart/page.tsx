@@ -3,17 +3,17 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { requireRole } from "@/lib/auth";
-import { getCartItems } from "@/lib/data";
+import { getMarketplaceCartItems } from "@/lib/marketplace";
 import { formatCurrency } from "@/lib/utils";
 import { CartItemList } from "@/components/cart/cart-item-list";
 import { checkoutCartAction, clearCartAction } from "@/lib/actions/cart";
 
 export default async function CartPage() {
   const { profile } = await requireRole(["customer"]);
-  const cartItems = await getCartItems(profile.id);
+  const cartItems = await getMarketplaceCartItems(profile.id);
 
   const subtotal = cartItems.reduce((sum, item) => {
-    return sum + (item.product?.price ?? 0) * item.quantity;
+    return sum + (item.listing?.price ?? 0) * item.quantity;
   }, 0);
   
   const tax = subtotal * 0.1; // 10% tax

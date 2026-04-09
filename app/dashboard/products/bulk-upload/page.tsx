@@ -14,7 +14,7 @@ export default function BulkUploadProductsPage() {
             <Button variant="secondary">Single product</Button>
           </Link>
         }
-        description="Upload a JSON file to create multiple products at once, each with its own custom product ID and optional unit metadata."
+        description="Upload a marketplace JSON file to create shared product records, required variants, and seller listings in one pass."
         eyebrow="Product creation"
         title="Bulk product upload"
       />
@@ -23,7 +23,8 @@ export default function BulkUploadProductsPage() {
         <div className="space-y-2">
           <h2 className="text-xl font-semibold text-brand-ink">JSON import</h2>
           <p className="text-sm text-slate-600">
-            Existing single-product creation stays unchanged. This page adds a faster path for larger catalogs.
+            Use this for full catalog onboarding when each product has shared information and every
+            sellable item is defined as a variant with its own seller SKU, price, MRP, and stock.
           </p>
         </div>
 

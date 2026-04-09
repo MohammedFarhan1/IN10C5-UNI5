@@ -7,20 +7,67 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
 import { getSellerOwnedProduct } from "@/lib/data";
 
+const MARKETPLACE_SETUP_GUIDE =
+  "Run `supabase/2026_04_10_marketplace_core.sql` in your Supabase SQL editor and add `marketplace` under Supabase Dashboard -> Settings -> API -> Exposed schemas.";
+
 type ImportedUnitRecord = {
   unitId: string;
   details: Record<string, string> | null;
 };
 
 type BulkProductUploadRecord = {
-  customProductId: string;
+  customProductId: string | null;
   name: string;
+  brand: string;
+  categoryName: string;
+  categoryDescription: string | null;
   description: string;
-  price: number;
-  imageUrl: string | null;
-  totalUnits: number;
-  units: ImportedUnitRecord[];
+  mainImage: string | null;
+  galleryImages: string[];
+  variants: VariantCreatePayload[];
 };
+
+type VariantCreatePayload = {
+  custom_variant_id?: string | null;
+  size?: string | null;
+  color?: string | null;
+  attributes?: Record<string, string> | null;
+  seller_sku: string;
+  price: number;
+  mrp: number;
+  stock_quantity: number;
+};
+
+function formatMarketplaceActionError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return "Something went wrong while saving the marketplace product.";
+  }
+
+  const record = error as {
+    code?: string | null;
+    message?: string | null;
+  };
+  const code = record.code ?? "";
+  const message = record.message ?? "";
+  const combined = `${code} ${message}`.toLowerCase();
+
+  if (
+    combined.includes("marketplace") &&
+    (
+      combined.includes("schema") ||
+      combined.includes("relation") ||
+      combined.includes("column") ||
+      combined.includes("cache") ||
+      code === "PGRST106" ||
+      code === "42P01" ||
+      code === "42703"
+    )
+  ) {
+    return `${MARKETPLACE_SETUP_GUIDE}${message ? ` Supabase said: ${message}` : ""}`;
+  }
+
+  return `${MARKETPLACE_SETUP_GUIDE}${message ? ` Supabase said: ${message}` : ""}`;
+}
 
 function normalizeDetailMap(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -163,62 +210,73 @@ function normalizeBulkProductRecord(value: unknown, index: number): BulkProductU
   }
 
   const record = value as Record<string, unknown>;
-  const customProductId = String(
+  const customProductIdValue = String(
     record.customProductId ?? record.custom_product_id ?? record.productId ?? record.product_id ?? ""
   ).trim();
-  const name = String(record.name ?? "").trim();
+  const name = String(record.product_name ?? record.name ?? "").trim();
+  const brand = String(record.brand ?? "").trim();
+  const categoryName = String(
+    record.category ?? record.category_name ?? record.categoryName ?? ""
+  ).trim();
+  const categoryDescription = String(
+    record.category_description ?? record.categoryDescription ?? ""
+  ).trim();
   const description = String(record.description ?? "").trim();
-  const price = Number(record.price ?? 0);
-  const totalUnits = Number(record.totalUnits ?? record.total_units ?? 0);
-  const imageUrlValue = String(record.imageUrl ?? record.image_url ?? "").trim();
+  const mainImage = String(
+    record.main_image ?? record.mainImage ?? record.imageUrl ?? record.image_url ?? ""
+  ).trim();
+  const rawGalleryImages =
+    record.gallery_images ?? record.galleryImages ?? record.images ?? [];
 
-  if (!customProductId) {
-    throw new Error(`Product ${index + 1} is missing a customProductId.`);
-  }
-
-  if (!name || !description) {
-    throw new Error(`Product ${index + 1} needs a name and description.`);
-  }
-
-  if (!Number.isFinite(price) || price <= 0) {
-    throw new Error(`Product ${index + 1} has an invalid price.`);
-  }
-
-  if (!Number.isInteger(totalUnits) || totalUnits <= 0) {
-    throw new Error(`Product ${index + 1} needs a whole-number totalUnits value above zero.`);
-  }
-
-  const rawUnits = record.units ?? [];
-
-  if (!Array.isArray(rawUnits)) {
-    throw new Error(`Product ${index + 1} has an invalid units array.`);
-  }
-
-  const units = rawUnits.map((unit, unitIndex) =>
-    normalizeImportedUnitRecord(unit, `product ${index + 1} units`, unitIndex)
-  );
-  const duplicateUnitIds = units
-    .map((unit) => unit.unitId)
-    .filter((unitId, unitIndex, unitIds) => unitIds.indexOf(unitId) !== unitIndex);
-
-  if (duplicateUnitIds.length > 0) {
+  if (!name || !brand || !categoryName || !description) {
     throw new Error(
-      `Product ${index + 1} contains duplicate unit IDs: ${Array.from(new Set(duplicateUnitIds)).join(", ")}.`
+      `Product ${index + 1} must include product_name, brand, category, and description.`
     );
   }
 
-  if (units.length > totalUnits) {
-    throw new Error(`Product ${index + 1} provides more unit records than totalUnits.`);
+  if (!Array.isArray(rawGalleryImages)) {
+    throw new Error(`Product ${index + 1} has an invalid gallery_images array.`);
+  }
+
+  const galleryImages = rawGalleryImages
+    .map((image, imageIndex) => {
+      const normalizedImage = String(image ?? "").trim();
+
+      if (!normalizedImage) {
+        throw new Error(`Product ${index + 1} has an empty gallery image at position ${imageIndex + 1}.`);
+      }
+
+      return normalizedImage;
+    });
+
+  const rawVariants = record.variants ?? [];
+
+  if (!Array.isArray(rawVariants) || rawVariants.length === 0) {
+    throw new Error(`Product ${index + 1} must include at least one variant.`);
+  }
+
+  const variants = parseVariantPayload(JSON.stringify(rawVariants));
+  const duplicateVariantIds = variants
+    .map((variant) => String(variant.custom_variant_id ?? "").trim())
+    .filter(Boolean)
+    .filter((variantId, variantIndex, variantIds) => variantIds.indexOf(variantId) !== variantIndex);
+
+  if (duplicateVariantIds.length > 0) {
+    throw new Error(
+      `Product ${index + 1} contains duplicate custom variant IDs: ${Array.from(new Set(duplicateVariantIds)).join(", ")}.`
+    );
   }
 
   return {
-    customProductId,
+    customProductId: customProductIdValue || null,
     name,
+    brand,
+    categoryName,
+    categoryDescription: categoryDescription || null,
     description,
-    price,
-    imageUrl: imageUrlValue || null,
-    totalUnits,
-    units
+    mainImage: mainImage || null,
+    galleryImages,
+    variants
   };
 }
 
@@ -237,12 +295,23 @@ function parseBulkProductsJson(value: string, sourceLabel: string) {
 
   const products = parsedValue.map((item, index) => normalizeBulkProductRecord(item, index));
   const duplicateProductIds = products
-    .map((product) => product.customProductId)
+    .map((product) => String(product.customProductId ?? "").trim())
+    .filter(Boolean)
     .filter((productId, index, productIds) => productIds.indexOf(productId) !== index);
+
+  const duplicateSellerSkus = products
+    .flatMap((product) => product.variants.map((variant) => variant.seller_sku))
+    .filter((sellerSku, index, sellerSkus) => sellerSkus.indexOf(sellerSku) !== index);
 
   if (duplicateProductIds.length > 0) {
     throw new Error(
       `The upload contains duplicate custom product IDs: ${Array.from(new Set(duplicateProductIds)).join(", ")}.`
+    );
+  }
+
+  if (duplicateSellerSkus.length > 0) {
+    throw new Error(
+      `The upload contains duplicate seller SKUs: ${Array.from(new Set(duplicateSellerSkus)).join(", ")}.`
     );
   }
 
@@ -265,88 +334,130 @@ async function collectBulkProducts(formData: FormData) {
   return products;
 }
 
-function sanitizeSkuBase(value: string) {
+function parseImageUrls(value: string) {
   return value
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
-function buildUnitCode(base: string, productId: string, index: number) {
-  const prefix = sanitizeSkuBase(base) || `SKU-${productId.slice(0, 8).toUpperCase()}`;
-  return `${prefix}-${String(index + 1).padStart(3, "0")}`;
-}
+function parseVariantPayload(value: string) {
+  let parsedValue: unknown;
 
-async function createProductWithUnits(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  sellerId: string,
-  input: {
-    customProductId?: string | null;
-    name: string;
-    description: string;
-    price: number;
-    imageUrl: string | null;
-    totalUnits: number;
-    units?: ImportedUnitRecord[];
-    categoryIds?: string[];
-  }
-) {
-  const { data: product, error: productError } = await supabase
-    .from("products")
-    .insert({
-      seller_id: sellerId,
-      custom_product_id: input.customProductId || null,
-      name: input.name,
-      description: input.description,
-      price: input.price,
-      image_url: input.imageUrl,
-      total_units: input.totalUnits
-    })
-    .select("id")
-    .single();
-
-  if (productError || !product) {
-    return {
-      error: productError?.message ?? "Unable to create product."
-    };
+  try {
+    parsedValue = JSON.parse(value);
+  } catch {
+    throw new Error("The generated variant payload is not valid JSON.");
   }
 
-  const configuredUnits = input.units ?? [];
-  const skuBase = input.customProductId || input.name;
-  const units = Array.from({ length: input.totalUnits }, (_, index) => ({
-    product_id: product.id,
-    unit_code: buildUnitCode(skuBase, product.id, index),
-    custom_unit_id: configuredUnits[index]?.unitId ?? null,
-    details: configuredUnits[index]?.details ?? null,
-    status: "available" as const
-  }));
-
-  const { error: unitsError } = await supabase.from("product_units").insert(units);
-
-  if (unitsError) {
-    await supabase.from("products").delete().eq("id", product.id);
-    return { error: unitsError.message };
+  if (!Array.isArray(parsedValue) || parsedValue.length === 0) {
+    throw new Error("Add at least one variant before creating the product.");
   }
 
-  if (input.categoryIds && input.categoryIds.length > 0) {
-    const productCategories = input.categoryIds.map((categoryId) => ({
-      product_id: product.id,
-      category_id: categoryId
-    }));
-
-    const { error: categoriesError } = await supabase
-      .from("product_categories")
-      .insert(productCategories);
-
-    if (categoriesError) {
-      await supabase.from("product_units").delete().eq("product_id", product.id);
-      await supabase.from("products").delete().eq("id", product.id);
-      return { error: categoriesError.message };
+  function normalizeAttributes(value: unknown) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
     }
+
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([key, entryValue]) => [key.trim(), String(entryValue ?? "").trim()] as const)
+      .filter(([key, entryValue]) => key.length > 0 && entryValue.length > 0);
+
+    return entries.length > 0 ? Object.fromEntries(entries) : null;
   }
 
-  return { productId: product.id };
+  return parsedValue.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`Variant ${index + 1} is invalid.`);
+    }
+
+    const record = item as Record<string, unknown>;
+    const size = String(record.size ?? "").trim();
+    const color = String(record.color ?? "").trim();
+    const attributes = normalizeAttributes(record.attributes ?? record.attribute_values ?? null);
+    const customVariantId = String(record.custom_variant_id ?? "").trim();
+    const sellerSku = String(record.seller_sku ?? "").trim();
+    const price = Number(record.price ?? 0);
+    const mrp = Number(record.mrp ?? 0);
+    const stockQuantity = Number(record.stock_quantity ?? 0);
+
+    if (!attributes && !size && !color) {
+      throw new Error(
+        `Variant ${index + 1} must include attribute values or size/color information.`
+      );
+    }
+
+    if (!sellerSku) {
+      throw new Error(`Variant ${index + 1} is missing a seller SKU.`);
+    }
+
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error(`Variant ${index + 1} needs a valid selling price.`);
+    }
+
+    if (!Number.isFinite(mrp) || mrp < price) {
+      throw new Error(`Variant ${index + 1} needs an MRP greater than or equal to price.`);
+    }
+
+    if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      throw new Error(`Variant ${index + 1} needs a whole-number stock quantity.`);
+    }
+
+    return {
+      custom_variant_id: customVariantId || null,
+      size: size || null,
+      color: color || null,
+      attributes,
+      seller_sku: sellerSku,
+      price,
+      mrp,
+      stock_quantity: stockQuantity
+    } satisfies VariantCreatePayload;
+  });
+}
+
+function buildVariantName(variant: VariantCreatePayload) {
+  const attributeEntries = Object.entries(variant.attributes ?? {}).filter(
+    ([, value]) => value.trim().length > 0
+  );
+
+  if (attributeEntries.length > 0) {
+    return attributeEntries
+      .map(([key, value]) => `${key.trim()}: ${value.trim()}`)
+      .join(" / ");
+  }
+
+  const size = variant.size?.trim() ?? "";
+  const color = variant.color?.trim() ?? "";
+  const fallback = [size, color].filter(Boolean).join(" / ");
+  return fallback || "Variant";
+}
+
+function buildVariantAttributes(variant: VariantCreatePayload) {
+  const normalized = Object.entries(variant.attributes ?? {})
+    .map(([key, value]) => [key.trim(), value.trim()] as const)
+    .filter(([key, value]) => key.length > 0 && value.length > 0);
+
+  const attributes = normalized.length > 0 ? Object.fromEntries(normalized) : {};
+
+  if (variant.size) {
+    attributes.size ??= variant.size;
+  }
+
+  if (variant.color) {
+    attributes.color ??= variant.color;
+  }
+
+  return Object.keys(attributes).length > 0 ? attributes : null;
+}
+
+function getAttributeValue(attributes: Record<string, string> | null, key: string) {
+  if (!attributes) {
+    return null;
+  }
+
+  const match = Object.entries(attributes).find(([name]) => name.toLowerCase() === key.toLowerCase());
+  return match ? match[1] : null;
 }
 
 export async function createProductAction(
@@ -355,59 +466,342 @@ export async function createProductAction(
 ): Promise<ActionState> {
   const { profile } = await requireRole(["seller"]);
 
-  const customProductId = String(formData.get("custom_product_id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
+  const customProductId = String(formData.get("custom_product_id") ?? "").trim();
+  const brand = String(formData.get("brand") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
-  const imageUrl = String(formData.get("image_url") ?? "").trim();
-  const price = Number(formData.get("price") ?? 0);
-  const totalUnits = Number(formData.get("total_units") ?? 0);
-  const categoryIds = formData.getAll("categories").map(String);
+  const selectedCategoryId = String(formData.get("category_id") ?? "").trim();
+  const newCategoryName = String(formData.get("new_category_name") ?? "").trim();
+  const newCategoryDescription = String(formData.get("new_category_description") ?? "").trim();
+  const imageUrls = parseImageUrls(String(formData.get("image_urls") ?? ""));
+  const catalogReference = String(formData.get("catalog_reference") ?? "").trim();
+  const rawVariantsPayload = String(formData.get("variants_payload") ?? "").trim();
 
-  if (!name || !description) {
-    return { error: "Name and description are required." };
+  if (!name || !brand || !description) {
+    return { error: "Product name, brand, and description are required." };
   }
 
-  if (!Number.isFinite(price) || price <= 0) {
-    return { error: "Price must be greater than zero." };
-  }
+  let variants: VariantCreatePayload[] = [];
 
-  if (!Number.isInteger(totalUnits) || totalUnits <= 0) {
-    return { error: "Total units must be a whole number above zero." };
+  try {
+    variants = parseVariantPayload(rawVariantsPayload);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Unable to read the generated variants."
+    };
   }
 
   const supabase = await createSupabaseServerClient();
+  let categoryId = selectedCategoryId;
+  const presetCategoryName = selectedCategoryId.startsWith("preset:")
+    ? selectedCategoryId.split(":").slice(2).join(":").trim()
+    : "";
 
-  if (customProductId) {
-    const { data: existingProduct, error: existingProductError } = await supabase
-      .from("products")
+  if (presetCategoryName) {
+    categoryId = "";
+  }
+
+  if (!categoryId && !newCategoryName && !presetCategoryName) {
+    return { error: "Choose an existing category or create a new one." };
+  }
+
+  if (newCategoryName || presetCategoryName) {
+    const targetCategoryName = newCategoryName || presetCategoryName;
+    const targetCategoryDescription = newCategoryName
+      ? newCategoryDescription || null
+      : null;
+
+    const { data: existingCategory, error: existingCategoryError } = await supabase
+      .from("categories")
       .select("id")
-      .eq("custom_product_id", customProductId)
+      .ilike("name", targetCategoryName)
       .maybeSingle();
 
-    if (existingProductError) {
-      return { error: existingProductError.message };
+    if (existingCategoryError) {
+      return { error: existingCategoryError.message };
     }
 
-    if (existingProduct) {
-      return { error: "This product ID is already in use. Please choose a different one." };
+    if (existingCategory?.id) {
+      categoryId = String(existingCategory.id);
+    } else {
+      const { data: createdCategory, error: createdCategoryError } = await supabase
+        .from("categories")
+        .insert({
+          name: targetCategoryName,
+          description: targetCategoryDescription
+        })
+        .select("id")
+        .single();
+
+      if (createdCategoryError || !createdCategory) {
+        return {
+          error: createdCategoryError?.message ?? "Unable to create the new category."
+        };
+      }
+
+      categoryId = String(createdCategory.id);
     }
   }
 
-  const result = await createProductWithUnits(supabase, profile.id, {
-    customProductId: customProductId || null,
-    name,
-    description,
-    price,
-    imageUrl: imageUrl || null,
-    totalUnits,
-    categoryIds
-  });
+  const duplicateSellerSkus = variants
+    .map((variant) => variant.seller_sku)
+    .filter((sku, index, skus) => skus.indexOf(sku) !== index);
 
-  if ("error" in result) {
-    return { error: result.error };
+  if (duplicateSellerSkus.length > 0) {
+    return {
+      error: `Seller SKUs must be unique. Duplicate values: ${Array.from(new Set(duplicateSellerSkus)).join(", ")}.`
+    };
   }
 
+  const { data: existingListings, error: existingListingsError } = await supabase
+    .schema("marketplace")
+    .from("listings")
+    .select("seller_sku")
+    .eq("seller_id", profile.id)
+    .in(
+      "seller_sku",
+      variants.map((variant) => variant.seller_sku)
+    );
+
+  if (existingListingsError) {
+    return { error: formatMarketplaceActionError(existingListingsError) };
+  }
+
+  const conflictingSkus = (existingListings ?? [])
+    .map((listing) => String(listing.seller_sku ?? "").trim())
+    .filter(Boolean);
+
+  if (conflictingSkus.length > 0) {
+    return {
+      error: `These seller SKUs already exist in your catalog: ${conflictingSkus.join(", ")}.`
+    };
+  }
+
+  const metadata = {
+    catalog_reference: catalogReference || null
+  };
+
+  const { data: product, error: productError } = await supabase
+    .schema("marketplace")
+    .from("products")
+    .insert({
+      custom_product_id: customProductId || null,
+      name,
+      brand,
+      category_id: categoryId,
+      description,
+      primary_image_url: imageUrls[0] ?? null,
+      gallery_image_urls: imageUrls.slice(1),
+      metadata,
+      created_by: profile.id
+    })
+    .select("id")
+    .single();
+
+  if (productError || !product) {
+    return {
+      error: formatMarketplaceActionError(productError) || "Unable to create the product catalog entry."
+    };
+  }
+
+  try {
+    for (const variant of variants) {
+      const variantAttributes = buildVariantAttributes(variant);
+      const variantSize = getAttributeValue(variantAttributes, "size") ?? variant.size ?? null;
+      const variantColor = getAttributeValue(variantAttributes, "color") ?? variant.color ?? null;
+      const variantName = buildVariantName({
+        ...variant,
+        attributes: variantAttributes
+      });
+
+      const { data: createdVariant, error: variantError } = await supabase
+        .schema("marketplace")
+        .from("variants")
+        .insert({
+          product_id: product.id,
+          custom_variant_id: variant.custom_variant_id ?? null,
+          name: variantName,
+          size: variantSize,
+          color: variantColor,
+          attributes: variantAttributes
+        })
+        .select("id")
+        .single();
+
+      if (variantError || !createdVariant) {
+        throw new Error(
+          formatMarketplaceActionError(variantError) || `Unable to create variant ${variantName}.`
+        );
+      }
+
+      const { error: listingError } = await supabase
+        .schema("marketplace")
+        .from("listings")
+        .insert({
+          variant_id: createdVariant.id,
+          seller_id: profile.id,
+          seller_sku: variant.seller_sku,
+          price: variant.price,
+          mrp: variant.mrp,
+          stock_on_hand: variant.stock_quantity,
+          fulfillment_type: "seller",
+          condition: "new",
+          status: "active"
+        });
+
+      if (listingError) {
+        throw new Error(formatMarketplaceActionError(listingError));
+      }
+    }
+  } catch (error) {
+    await supabase.schema("marketplace").from("products").delete().eq("id", product.id);
+
+    return {
+      error: error instanceof Error ? error.message : "Unable to create all variant listings."
+    };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/products");
   redirect("/dashboard/products");
+}
+
+async function resolveCategoryIdForBulkUpload(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  categoryName: string,
+  categoryDescription: string | null
+) {
+  const { data: existingCategory, error: existingCategoryError } = await supabase
+    .from("categories")
+    .select("id")
+    .ilike("name", categoryName)
+    .maybeSingle();
+
+  if (existingCategoryError) {
+    return { error: existingCategoryError.message };
+  }
+
+  if (existingCategory?.id) {
+    return { categoryId: String(existingCategory.id) };
+  }
+
+  const { data: createdCategory, error: createdCategoryError } = await supabase
+    .from("categories")
+    .insert({
+      name: categoryName,
+      description: categoryDescription
+    })
+    .select("id")
+    .single();
+
+  if (createdCategoryError || !createdCategory) {
+    return {
+      error: createdCategoryError?.message ?? "Unable to create category for bulk upload."
+    };
+  }
+
+  return { categoryId: String(createdCategory.id) };
+}
+
+async function createMarketplaceProductFromBulkUpload(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  sellerId: string,
+  product: BulkProductUploadRecord
+) {
+  const categoryResult = await resolveCategoryIdForBulkUpload(
+    supabase,
+    product.categoryName,
+    product.categoryDescription
+  );
+
+  if ("error" in categoryResult) {
+    return { error: categoryResult.error };
+  }
+
+  const { data: createdProduct, error: productError } = await supabase
+    .schema("marketplace")
+    .from("products")
+    .insert({
+      custom_product_id: product.customProductId,
+      name: product.name,
+      brand: product.brand,
+      category_id: categoryResult.categoryId,
+      description: product.description,
+      primary_image_url: product.mainImage,
+      gallery_image_urls: product.galleryImages,
+      metadata: {
+        catalog_reference: null
+      },
+      created_by: sellerId
+    })
+    .select("id")
+    .single();
+
+  if (productError || !createdProduct) {
+    return {
+      error: formatMarketplaceActionError(productError) || "Unable to create bulk catalog product."
+    };
+  }
+
+  try {
+    for (const variant of product.variants) {
+      const variantAttributes = buildVariantAttributes(variant);
+      const variantSize = getAttributeValue(variantAttributes, "size") ?? variant.size ?? null;
+      const variantColor = getAttributeValue(variantAttributes, "color") ?? variant.color ?? null;
+      const variantName = buildVariantName({
+        ...variant,
+        attributes: variantAttributes
+      });
+
+      const { data: createdVariant, error: variantError } = await supabase
+        .schema("marketplace")
+        .from("variants")
+        .insert({
+          product_id: createdProduct.id,
+          custom_variant_id: variant.custom_variant_id ?? null,
+          name: variantName,
+          size: variantSize,
+          color: variantColor,
+          attributes: variantAttributes
+        })
+        .select("id")
+        .single();
+
+      if (variantError || !createdVariant) {
+        throw new Error(
+          formatMarketplaceActionError(variantError) ||
+            `Unable to create variant ${variant.size} / ${variant.color}.`
+        );
+      }
+
+      const { error: listingError } = await supabase
+        .schema("marketplace")
+        .from("listings")
+        .insert({
+          variant_id: createdVariant.id,
+          seller_id: sellerId,
+          seller_sku: variant.seller_sku,
+          price: variant.price,
+          mrp: variant.mrp,
+          stock_on_hand: variant.stock_quantity,
+          fulfillment_type: "seller",
+          condition: "new",
+          status: "active"
+        });
+
+      if (listingError) {
+        throw new Error(formatMarketplaceActionError(listingError));
+      }
+    }
+  } catch (error) {
+    await supabase.schema("marketplace").from("products").delete().eq("id", createdProduct.id);
+
+    return {
+      error: error instanceof Error ? error.message : "Unable to create product variants from bulk upload."
+    };
+  }
+
+  return { productId: createdProduct.id };
 }
 
 export async function bulkCreateProductsAction(
@@ -436,13 +830,18 @@ export async function bulkCreateProductsAction(
   const customProductIds = parsedProducts
     .map((product) => String(product.customProductId ?? "").trim())
     .filter(Boolean);
+  const sellerSkus = parsedProducts.flatMap((product) =>
+    product.variants.map((variant) => variant.seller_sku)
+  );
   const { data: existingProducts, error: existingProductsError } = await supabase
+    .schema("marketplace")
     .from("products")
     .select("custom_product_id")
+    .eq("created_by", profile.id)
     .in("custom_product_id", customProductIds);
 
   if (existingProductsError) {
-    return { error: existingProductsError.message };
+    return { error: formatMarketplaceActionError(existingProductsError) };
   }
 
   const existingProductIds = (existingProducts ?? [])
@@ -455,31 +854,44 @@ export async function bulkCreateProductsAction(
     };
   }
 
+  const { data: existingListings, error: existingListingsError } = await supabase
+    .schema("marketplace")
+    .from("listings")
+    .select("seller_sku")
+    .eq("seller_id", profile.id)
+    .in("seller_sku", sellerSkus);
+
+  if (existingListingsError) {
+    return { error: formatMarketplaceActionError(existingListingsError) };
+  }
+
+  const conflictingSkus = (existingListings ?? [])
+    .map((listing) => String(listing.seller_sku ?? "").trim())
+    .filter(Boolean);
+
+  if (conflictingSkus.length > 0) {
+    return {
+      error: `These seller SKUs already exist in your catalog: ${conflictingSkus.join(", ")}.`
+    };
+  }
+
   const createdProductIds: string[] = [];
 
   for (const product of parsedProducts) {
-    const result = await createProductWithUnits(supabase, profile.id, {
-      customProductId: product.customProductId,
-      name: product.name,
-      description: product.description,
-      price: product.price,
-      imageUrl: product.imageUrl,
-      totalUnits: product.totalUnits,
-      units: product.units
-    });
+    const result = await createMarketplaceProductFromBulkUpload(supabase, profile.id, product);
 
     if ("error" in result) {
       if (createdProductIds.length > 0) {
         await supabase
+          .schema("marketplace")
           .from("products")
           .delete()
-          .eq("seller_id", profile.id)
+          .eq("created_by", profile.id)
           .in("id", createdProductIds);
       }
 
-      return {
-        error: `Bulk upload stopped at ${product.customProductId}: ${result.error}`
-      };
+      const productLabel = product.customProductId ?? product.name;
+      return { error: `Bulk upload stopped at ${productLabel}: ${result.error}` };
     }
 
     createdProductIds.push(result.productId);
@@ -547,6 +959,105 @@ export async function updateProductAction(
   redirect("/dashboard/products");
 }
 
+export async function updateMarketplaceProductAction(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const { profile } = await requireRole(["seller"]);
+  const productId = String(formData.get("product_id") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const brand = String(formData.get("brand") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const selectedCategoryId = String(formData.get("category_id") ?? "").trim();
+  const newCategoryName = String(formData.get("new_category_name") ?? "").trim();
+  const newCategoryDescription = String(formData.get("new_category_description") ?? "").trim();
+  const catalogReference = String(formData.get("catalog_reference") ?? "").trim();
+  const imageUrls = parseImageUrls(String(formData.get("image_urls") ?? ""));
+
+  if (!productId || !name || !brand || !description) {
+    return { error: "Product name, brand, and description are required." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  let categoryId = selectedCategoryId;
+  const presetCategoryName = selectedCategoryId.startsWith("preset:")
+    ? selectedCategoryId.split(":").slice(2).join(":").trim()
+    : "";
+
+  if (presetCategoryName) {
+    categoryId = "";
+  }
+
+  if (!categoryId && !newCategoryName && !presetCategoryName) {
+    return { error: "Choose an existing category or create a new one." };
+  }
+
+  if (newCategoryName || presetCategoryName) {
+    const targetCategoryName = newCategoryName || presetCategoryName;
+    const targetCategoryDescription = newCategoryName
+      ? newCategoryDescription || null
+      : null;
+
+    const { data: existingCategory, error: existingCategoryError } = await supabase
+      .from("categories")
+      .select("id")
+      .ilike("name", targetCategoryName)
+      .maybeSingle();
+
+    if (existingCategoryError) {
+      return { error: existingCategoryError.message };
+    }
+
+    if (existingCategory?.id) {
+      categoryId = String(existingCategory.id);
+    } else {
+      const { data: createdCategory, error: createdCategoryError } = await supabase
+        .from("categories")
+        .insert({
+          name: targetCategoryName,
+          description: targetCategoryDescription
+        })
+        .select("id")
+        .single();
+
+      if (createdCategoryError || !createdCategory) {
+        return {
+          error: createdCategoryError?.message ?? "Unable to create the new category."
+        };
+      }
+
+      categoryId = String(createdCategory.id);
+    }
+  }
+
+  const { error } = await supabase
+    .schema("marketplace")
+    .from("products")
+    .update({
+      name,
+      brand,
+      category_id: categoryId,
+      description,
+      primary_image_url: imageUrls[0] ?? null,
+      gallery_image_urls: imageUrls.slice(1),
+      metadata: {
+        catalog_reference: catalogReference || null
+      }
+    })
+    .eq("id", productId)
+    .eq("created_by", profile.id);
+
+  if (error) {
+    return { error: formatMarketplaceActionError(error) };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/products");
+  revalidatePath(`/dashboard/products/${productId}/edit`);
+  revalidatePath(`/product/${productId}`);
+  redirect("/dashboard/products");
+}
+
 export async function importProductUnitsAction(
   _prevState: ActionState,
   formData: FormData
@@ -568,7 +1079,7 @@ export async function importProductUnitsAction(
 
   if (importedEntries.length === 0) {
     return {
-      error: "Add manual lines, a JSON payload, or a JSON file before importing units."
+      error: "Add manual lines before importing units."
     };
   }
 
@@ -689,9 +1200,10 @@ export async function deleteSelectedProductsAction(
   const uniqueProductIds = Array.from(new Set(productIds));
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase
+    .schema("marketplace")
     .from("products")
     .delete()
-    .eq("seller_id", profile.id)
+    .eq("created_by", profile.id)
     .in("id", uniqueProductIds);
 
   if (error) {
@@ -701,3 +1213,9 @@ export async function deleteSelectedProductsAction(
   revalidatePath("/dashboard/products");
   redirect(returnQuery ? `/dashboard/products?q=${encodeURIComponent(returnQuery)}` : "/dashboard/products");
 }
+
+
+
+
+
+

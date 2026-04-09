@@ -1,4 +1,4 @@
-import { Role } from "@/types";
+import { Role, MarketplaceVariant } from "@/types";
 import { ROLE_HOME } from "@/lib/constants";
 
 export function cn(...classes: Array<string | false | null | undefined>) {
@@ -18,6 +18,16 @@ export function formatDate(value: string) {
     day: "2-digit",
     month: "short",
     year: "numeric"
+  }).format(new Date(value));
+}
+
+export function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
   }).format(new Date(value));
 }
 
@@ -75,3 +85,22 @@ export function formatUnitDetails(details?: Record<string, string> | null) {
 
   return Object.entries(details).filter(([, value]) => value.trim().length > 0);
 }
+
+export function formatVariantLabel(
+  variant: Pick<MarketplaceVariant, "attributes" | "size" | "color" | "name">
+) {
+  const attributes = Object.entries(variant.attributes ?? {})
+    .map(([key, value]) => [key.trim(), value.trim()] as const)
+    .filter(([key, value]) => key.length > 0 && value.length > 0);
+
+  if (attributes.length > 0) {
+    return attributes.map(([key, value]) => `${key}: ${value}`).join(" / ");
+  }
+
+  const fallback = [variant.size, variant.color].filter(Boolean).join(" / ");
+  return fallback || variant.name || "Variant";
+}
+
+
+
+

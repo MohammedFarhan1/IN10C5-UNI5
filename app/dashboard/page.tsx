@@ -2,19 +2,35 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
-import { getSellerOrders, getSellerProducts } from "@/lib/data";
+import {
+  getMarketplaceAvailability,
+  getMarketplaceSellerOrders,
+  getMarketplaceSellerProducts
+} from "@/lib/marketplace";
 import { requireRole } from "@/lib/auth";
 
 export default async function SellerDashboardPage() {
   const { profile } = await requireRole(["seller"]);
-  const [products, orders] = await Promise.all([
-    getSellerProducts(profile.id),
-    getSellerOrders(profile.id)
-  ]);
+  const marketplaceStatus = await getMarketplaceAvailability();
+  const [products, orders] = marketplaceStatus.available
+    ? await Promise.all([
+        getMarketplaceSellerProducts(profile.id),
+        getMarketplaceSellerOrders(profile.id)
+      ])
+    : [[], []];
 
-  const totalUnits = products.reduce((sum, product) => sum + product.total_units, 0);
-  const availableUnits = products.reduce(
-    (sum, product) => sum + (product.units?.filter((unit) => unit.status === "available").length ?? 0),
+  const totalStock = products.reduce(
+    (sum, product) =>
+      sum +
+      (product.variants ?? []).reduce(
+        (variantSum, variant) =>
+          variantSum +
+          (variant.listings ?? []).reduce(
+            (listingSum, listing) => listingSum + listing.available_stock,
+            0
+          ),
+        0
+      ),
     0
   );
 
@@ -26,7 +42,7 @@ export default async function SellerDashboardPage() {
             <Button>Add new product</Button>
           </Link>
         }
-        description="Create products, generate unit identities, and monitor every sale from one place."
+        description="Create catalog products, add variants, manage seller listings, and monitor every order from one place."
         eyebrow="Seller workspace"
         title="Dashboard overview"
       />
@@ -41,11 +57,20 @@ export default async function SellerDashboardPage() {
           <p className="mt-3 text-4xl font-semibold text-brand-ink">{orders.length}</p>
         </Card>
         <Card>
-          <p className="text-sm text-slate-500">Available units</p>
-          <p className="mt-3 text-4xl font-semibold text-brand-ink">{availableUnits}</p>
-          <p className="mt-2 text-xs uppercase tracking-[0.24em] text-slate-500">of {totalUnits} total</p>
+          <p className="text-sm text-slate-500">Available stock</p>
+          <p className="mt-3 text-4xl font-semibold text-brand-ink">{totalStock}</p>
+          <p className="mt-2 text-xs uppercase tracking-[0.24em] text-slate-500">across active listings</p>
         </Card>
       </div>
+
+      {!marketplaceStatus.available ? (
+        <Card>
+          <div className="space-y-3">
+            <p className="text-lg font-semibold text-brand-ink">Marketplace setup needed</p>
+            <p className="text-sm text-slate-600">{marketplaceStatus.message}</p>
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }

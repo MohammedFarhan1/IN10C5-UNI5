@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useActionState, useTransition } from "react";
-import { ActionState, CartItem } from "@/types";
-import { formatCurrency } from "@/lib/utils";
+import { ActionState, MarketplaceCartItem } from "@/types";
+import { formatCurrency, formatVariantLabel } from "@/lib/utils";
 import { updateCartItemAction, removeFromCartAction } from "@/lib/actions/cart";
 
 type CartItemListProps = {
-  cartItems: CartItem[];
+  cartItems: MarketplaceCartItem[];
 };
 
 const initialState: ActionState = {};
@@ -22,7 +22,7 @@ export function CartItemList({ cartItems }: CartItemListProps) {
   );
 }
 
-function CartItemRow({ item }: { item: CartItem }) {
+function CartItemRow({ item }: { item: MarketplaceCartItem }) {
   const [updateState, updateAction, updatePending] = useActionState(
     updateCartItemAction,
     initialState
@@ -33,9 +33,17 @@ function CartItemRow({ item }: { item: CartItem }) {
   );
   const [, startTransition] = useTransition();
 
-  if (!item.product) return null;
+  if (!item.listing?.variant?.product) return null;
 
-  const subtotal = item.product.price * item.quantity;
+  const product = item.listing.variant.product;
+  const variant = item.listing.variant;
+  const sellerName =
+    item.listing.seller?.display_name ||
+    item.listing.seller?.business_name ||
+    item.listing.seller?.email ||
+    "Seller";
+
+  const subtotal = item.listing.price * item.quantity;
 
   const handleQuantityChange = (newQuantity: number) => {
     const formData = new FormData();
@@ -58,21 +66,24 @@ function CartItemRow({ item }: { item: CartItem }) {
         <div className="flex flex-1 gap-4">
           <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100">
             <img
-              alt={item.product.name}
+              alt={product.name}
               className="h-full w-full object-cover"
-              src={item.product.image_url || "/placeholder-product.jpg"}
+              src={product.primary_image_url || "/placeholder-product.jpg"}
             />
           </div>
           <div className="flex flex-1 flex-col justify-between">
             <div>
               <Link
                 className="block font-semibold text-slate-900 hover:text-brand-pine transition-colors line-clamp-2"
-                href={`/product/${item.product.id}`}
+                href={`/product/${product.id}`}
               >
-                {item.product.name}
+                {product.name}
               </Link>
               <p className="mt-1 text-sm text-slate-600">
-                {formatCurrency(item.product.price)} each
+                {formatVariantLabel(variant)} • {sellerName}
+              </p>
+              <p className="mt-1 text-sm text-slate-600">
+                {formatCurrency(item.listing.price)} each
               </p>
             </div>
           </div>
@@ -93,7 +104,7 @@ function CartItemRow({ item }: { item: CartItem }) {
           </span>
           <button
             onClick={() => handleQuantityChange(item.quantity + 1)}
-            disabled={updatePending}
+            disabled={updatePending || item.quantity >= item.listing.available_stock}
             className="p-2 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
             title="Increase quantity"
           >
@@ -131,3 +142,4 @@ function CartItemRow({ item }: { item: CartItem }) {
     </div>
   );
 }
+

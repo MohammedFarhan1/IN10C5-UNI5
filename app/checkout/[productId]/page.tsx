@@ -1,39 +1,44 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckoutForm } from "@/components/forms/checkout-form";
 import { createOrderAction } from "@/lib/actions/orders";
 import { requireRole } from "@/lib/auth";
-import { getProductById } from "@/lib/data";
-import { formatCurrency, getStockSummary } from "@/lib/utils";
+import { getMarketplaceProductById } from "@/lib/marketplace";
+import { formatCurrency, formatVariantLabel } from "@/lib/utils";
 
 type CheckoutPageProps = {
   params: Promise<{ productId: string }>;
+  searchParams?: Promise<{ listing?: string }>;
 };
 
-export default async function CheckoutPage({ params }: CheckoutPageProps) {
+export default async function CheckoutPage({ params, searchParams }: CheckoutPageProps) {
   await requireRole(["customer"]);
   const { productId } = await params;
-  const product = await getProductById(productId);
+  const query = searchParams ? await searchParams : undefined;
+  const listingId = query?.listing?.trim() ?? "";
+  const product = await getMarketplaceProductById(productId);
 
   if (!product) {
     notFound();
   }
 
-  const availableUnits =
-    product.units?.filter((unit) => unit.status === "available").length ?? 0;
+  const selectedVariant = (product.variants ?? []).find((variant) =>
+    (variant.listings ?? []).some((listing) => listing.id === listingId)
+  );
+  const selectedListing = selectedVariant?.listings?.find((listing) => listing.id === listingId) ?? null;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 md:px-6 lg:px-8">
       <div className="grid gap-6 md:grid-cols-[1.1fr_420px]">
         <Card className="space-y-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-pine">
-            Checkout
-          </p>
-          <h1 className="text-3xl font-semibold text-brand-ink">Confirm your tracked unit purchase</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-pine">Checkout</p>
+          <h1 className="text-3xl font-semibold text-brand-ink">Confirm your marketplace order</h1>
           <p className="text-sm leading-7 text-slate-600">
-            Choose how many units you want, and the system will assign that many available tracked units into one grouped order.
+            Orders are placed against a specific variant and seller listing so pricing, SKU, stock, and tracking stay traceable.
           </p>
+
           <div className="rounded-[24px] bg-slate-50 p-4">
             <p className="text-sm font-medium text-brand-ink">{product.name}</p>
             <p className="mt-2 text-sm text-slate-600">{product.description}</p>
@@ -41,34 +46,49 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
         </Card>
 
         <Card className="space-y-5">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Unit availability</p>
-            <p className="mt-2 text-2xl font-semibold text-brand-ink">
-              {getStockSummary(availableUnits, product.total_units)}
-            </p>
-          </div>
+          {selectedListing && selectedVariant ? (
+            <>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Selected variant</p>
+                <p className="mt-2 text-lg font-semibold text-brand-ink">
+                  {formatVariantLabel(selectedVariant)}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">{selectedListing.seller_sku}</p>
+              </div>
 
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Price</p>
-            <p className="mt-2 text-3xl font-semibold text-brand-pine">
-              {formatCurrency(product.price)}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">Price shown per unit.</p>
-          </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Price</p>
+                <p className="mt-2 text-3xl font-semibold text-brand-pine">
+                  {formatCurrency(selectedListing.price)}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">MRP {formatCurrency(selectedListing.mrp)}</p>
+              </div>
 
-          {availableUnits > 0 ? (
-            <CheckoutForm
-              action={createOrderAction}
-              availableUnits={availableUnits}
-              productId={product.id}
-            />
+              {selectedListing.available_stock > 0 ? (
+                <CheckoutForm
+                  action={createOrderAction}
+                  availableStock={selectedListing.available_stock}
+                  listingId={selectedListing.id}
+                />
+              ) : (
+                <Button className="w-full" disabled>
+                  This listing is out of stock
+                </Button>
+              )}
+            </>
           ) : (
-            <Button className="w-full" disabled>
-              No units available
-            </Button>
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Pick variant options and a seller on the product page before buying.
+              </p>
+              <Link href={`/product/${product.id}`}>
+                <Button className="w-full">Back to product</Button>
+              </Link>
+            </div>
           )}
         </Card>
       </div>
     </div>
   );
 }
+

@@ -23,6 +23,41 @@ type HomepageProductFilters = {
 
 type RawRecord = Record<string, unknown>;
 
+const DEFAULT_CATEGORIES = [
+  {
+    name: "Electronics",
+    description: "Electronic devices and gadgets"
+  },
+  {
+    name: "Clothing",
+    description: "Apparel and fashion items"
+  },
+  {
+    name: "Footwear",
+    description: "Shoes, sneakers, sandals, and boots"
+  },
+  {
+    name: "Accessories",
+    description: "Bags, belts, wallets, watches, and fashion accessories"
+  },
+  {
+    name: "Home & Garden",
+    description: "Home improvement and gardening supplies"
+  },
+  {
+    name: "Beauty",
+    description: "Beauty and personal care products"
+  },
+  {
+    name: "Sports",
+    description: "Sports equipment and accessories"
+  },
+  {
+    name: "Books",
+    description: "Books and publications"
+  }
+] as const;
+
 function asRecord(value: unknown): RawRecord | undefined {
   if (Array.isArray(value)) {
     const [first] = value;
@@ -297,7 +332,18 @@ export async function getCategories() {
     throw error;
   }
 
-  return data.map(mapCategory);
+  const categories = (data ?? []).map(mapCategory);
+
+  if (categories.length > 0) {
+    return categories;
+  }
+
+  return DEFAULT_CATEGORIES.map((category, index) => ({
+    id: `preset:${index}:${category.name}`,
+    name: category.name,
+    description: category.description,
+    created_at: new Date(0).toISOString()
+  }));
 }
 
 export async function getHomepageProducts(filters: HomepageProductFilters = {}) {

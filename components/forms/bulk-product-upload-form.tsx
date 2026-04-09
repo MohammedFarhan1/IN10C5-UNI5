@@ -15,15 +15,41 @@ const initialState: ActionState = {};
 
 const exampleJson = `[
   {
-    "customProductId": "DRIPPER-001",
-    "name": "Limited edition coffee dripper",
-    "description": "Batch-tracked dripper for specialty coffee brews.",
-    "price": 2499,
-    "imageUrl": "https://images.example.com/dripper.jpg",
-    "totalUnits": 3,
-    "units": [
-      { "unitId": "DRIPPER-001-A", "details": { "batch": "A1", "color": "Black" } },
-      { "unitId": "DRIPPER-001-B", "details": { "batch": "A1", "color": "Cream" } }
+    "custom_product_id": "TSHIRT-OVERSIZED-001",
+    "product_name": "Oversized Cotton T-Shirt",
+    "brand": "Vericart Basics",
+    "category": "Clothing",
+    "description": "Heavyweight cotton oversized t-shirt for everyday wear.",
+    "main_image": "https://images.example.com/products/tshirt-front.jpg",
+    "gallery_images": [
+      "https://images.example.com/products/tshirt-back.jpg",
+      "https://images.example.com/products/tshirt-detail.jpg"
+    ],
+    "variants": [
+      {
+        "custom_variant_id": "BLK-M-OVER",
+        "attributes": {
+          "Size": "M",
+          "Color": "Black",
+          "Fit": "Oversized"
+        },
+        "seller_sku": "TSHIRT-BLK-M",
+        "price": 799,
+        "mrp": 999,
+        "stock_quantity": 25
+      },
+      {
+        "custom_variant_id": "BLK-L-OVER",
+        "attributes": {
+          "Size": "L",
+          "Color": "Black",
+          "Fit": "Oversized"
+        },
+        "seller_sku": "TSHIRT-BLK-L",
+        "price": 799,
+        "mrp": 999,
+        "stock_quantity": 18
+      }
     ]
   }
 ]`;
@@ -46,17 +72,42 @@ export function BulkProductUploadForm({ action }: BulkProductUploadFormProps) {
             type="file"
           />
           <p className="text-xs text-slate-500">
-            Upload a JSON array of products. Each entry must include a unique <span className="font-semibold">customProductId</span>.
+            Upload a JSON array of catalog products. Each product can include shared product data and
+            a required <span className="font-semibold">variants</span> array with seller listing fields.
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-brand-ink">Supported keys</p>
+          <p className="text-sm font-semibold text-brand-ink">Supported structure</p>
           <ul className="mt-3 space-y-2 text-sm text-slate-600">
-            <li><span className="font-medium text-brand-ink">customProductId</span>, <span className="font-medium text-brand-ink">name</span>, <span className="font-medium text-brand-ink">description</span></li>
-            <li><span className="font-medium text-brand-ink">price</span>, <span className="font-medium text-brand-ink">imageUrl</span>, <span className="font-medium text-brand-ink">totalUnits</span></li>
-            <li><span className="font-medium text-brand-ink">units</span> with optional unit IDs and metadata</li>
-          </ul>
+  <li>
+    Product fields: <span className="font-medium text-brand-ink">custom_product_id</span>,{" "}
+    <span className="font-medium text-brand-ink">product_name</span>,{" "}
+    <span className="font-medium text-brand-ink">brand</span>,{" "}
+    <span className="font-medium text-brand-ink">category</span>,{" "}
+    <span className="font-medium text-brand-ink">description</span>
+  </li>
+  <li>
+    Image fields: <span className="font-medium text-brand-ink">main_image</span> and{" "}
+    <span className="font-medium text-brand-ink">gallery_images</span> (array)
+  </li>
+  <li>
+    Each variant should include <span className="font-medium text-brand-ink">attributes</span> (map),{" "}
+    <span className="font-medium text-brand-ink">seller_sku</span>,{" "}
+    <span className="font-medium text-brand-ink">price</span>,{" "}
+    <span className="font-medium text-brand-ink">mrp</span>, and{" "}
+    <span className="font-medium text-brand-ink">stock_quantity</span>
+  </li>
+  <li>
+    Optional aliases also work: <span className="font-medium text-brand-ink">customProductId</span>,{" "}
+    <span className="font-medium text-brand-ink">name</span>,{" "}
+    <span className="font-medium text-brand-ink">categoryName</span>,{" "}
+    <span className="font-medium text-brand-ink">mainImage</span>, and{" "}
+    <span className="font-medium text-brand-ink">galleryImages</span>. Variants may also include{" "}
+    <span className="font-medium text-brand-ink">size</span> or{" "}
+    <span className="font-medium text-brand-ink">color</span> for compatibility.
+  </li>
+</ul>
         </div>
       </div>
 
@@ -71,6 +122,10 @@ export function BulkProductUploadForm({ action }: BulkProductUploadFormProps) {
           name="products_json"
           spellCheck={false}
         />
+        <p className="text-xs text-slate-500">
+          The selected category will be reused if it already exists. New category names are created
+          automatically when the seller has permission to add categories.
+        </p>
       </div>
 
       {state.error ? (
@@ -82,9 +137,12 @@ export function BulkProductUploadForm({ action }: BulkProductUploadFormProps) {
       ) : null}
 
       <Button disabled={pending} type="submit">
-        {pending ? "Uploading products..." : "Create products from JSON"}
+        {pending ? "Uploading products..." : "Create catalog products from JSON"}
       </Button>
     </form>
   );
 }
+
+
+
 

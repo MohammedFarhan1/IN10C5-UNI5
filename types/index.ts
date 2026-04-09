@@ -2,6 +2,18 @@ export type Role = "customer" | "seller" | "admin";
 
 export type ProductUnitStatus = "available" | "sold" | "delivered";
 export type OrderStatus = "ordered" | "shipped" | "delivered" | "cancelled";
+export type FulfillmentType = "seller" | "platform";
+export type ListingCondition = "new" | "refurbished" | "used";
+export type ListingStatus = "draft" | "active" | "inactive" | "archived";
+export type MarketplaceOrderStatus =
+  | "placed"
+  | "confirmed"
+  | "packed"
+  | "shipped"
+  | "out_for_delivery"
+  | "delivered"
+  | "cancelled"
+  | "returned";
 
 export type ActionState = {
   error?: string;
@@ -112,4 +124,151 @@ export type TrackingDetails = {
   > & {
     buyer?: Pick<UserProfile, "id" | "email">;
   }) | null;
+};
+
+export type MarketplaceSeller = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  business_name: string | null;
+  is_active: boolean;
+  metadata: Record<string, string> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MarketplaceProduct = {
+  id: string;
+  custom_product_id: string | null;
+  name: string;
+  brand: string;
+  category_id: string | null;
+  description: string;
+  primary_image_url: string | null;
+  gallery_image_urls: string[];
+  metadata: Record<string, string> | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  category?: Category;
+};
+
+export type MarketplaceVariant = {
+  id: string;
+  product_id: string;
+  custom_variant_id: string | null;
+  name: string;
+  size: string | null;
+  color: string | null;
+  barcode: string | null;
+  attributes: Record<string, string> | null;
+  qr_target_path: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MarketplaceListing = {
+  id: string;
+  variant_id: string;
+  seller_id: string;
+  seller_sku: string;
+  price: number;
+  mrp: number;
+  currency_code: string;
+  stock_on_hand: number;
+  reserved_stock: number;
+  available_stock: number;
+  fulfillment_type: FulfillmentType;
+  delivery_min_days: number;
+  delivery_max_days: number;
+  gst_percentage: number;
+  condition: ListingCondition;
+  status: ListingStatus;
+  qr_target_path: string | null;
+  metadata: Record<string, string> | null;
+  created_at: string;
+  updated_at: string;
+  seller?: MarketplaceSeller;
+};
+
+export type MarketplaceOrder = {
+  id: string;
+  order_id: string;
+  buyer_id: string;
+  status: MarketplaceOrderStatus;
+  currency_code: string;
+  subtotal_amount: number;
+  shipping_amount: number;
+  total_amount: number;
+  shipping_address: Record<string, string> | null;
+  created_at: string;
+  updated_at: string;
+  buyer?: Pick<UserProfile, "id" | "email">;
+};
+
+export type MarketplaceSubOrder = {
+  id: string;
+  order_id: string;
+  seller_id: string;
+  sub_order_number: string;
+  status: MarketplaceOrderStatus;
+  fulfillment_type: FulfillmentType;
+  subtotal_amount: number;
+  shipping_amount: number;
+  total_amount: number;
+  created_at: string;
+  updated_at: string;
+  seller?: MarketplaceSeller;
+};
+
+export type MarketplaceOrderTrackingEntry = {
+  tracking_id: string;
+  order_id: string;
+  status: MarketplaceOrderStatus;
+  timestamp: string;
+  updated_by: string;
+};
+
+export type MarketplaceOrderItem = {
+  id: string;
+  order_id: string;
+  sub_order_id: string;
+  seller_id: string;
+  listing_id: string;
+  product_id: string;
+  variant_id: string;
+  seller_sku: string;
+  product_name: string;
+  variant_name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  status: MarketplaceOrderStatus;
+  created_at: string;
+  updated_at: string;
+  seller?: MarketplaceSeller;
+};
+
+export type MarketplaceProductWithDetails = MarketplaceProduct & {
+  variants?: Array<MarketplaceVariant & { listings?: MarketplaceListing[] }>;
+};
+
+export type MarketplaceOrderWithDetails = MarketplaceOrder & {
+  suborders?: MarketplaceSubOrder[];
+  items?: MarketplaceOrderItem[];
+  tracking?: MarketplaceOrderTrackingEntry[];
+};
+
+export type MarketplaceCartItem = {
+  id: string;
+  user_id: string;
+  listing_id: string;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+  listing?: MarketplaceListing & {
+    variant?: MarketplaceVariant & {
+      product?: MarketplaceProduct;
+    };
+  };
 };

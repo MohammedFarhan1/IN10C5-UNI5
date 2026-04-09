@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ActionState } from "@/types";
 import { getCurrentSession, requireRole } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  cancelMarketplaceOrder,
+  placeMarketplaceOrder
+} from "@/lib/marketplace";
 import { roleHome } from "@/lib/utils";
 
 export async function createOrderAction(
@@ -12,39 +15,26 @@ export async function createOrderAction(
   formData: FormData
 ): Promise<ActionState> {
   const { profile } = await requireRole(["customer"]);
-  const productId = String(formData.get("product_id") ?? "").trim();
+  const listingId = String(formData.get("listing_id") ?? "").trim();
   const quantity = Number(formData.get("quantity") ?? 1);
 
-  if (!productId) {
-    return { error: "Product ID is required." };
+  if (!listingId) {
+    return { error: "Select a seller option before buying." };
   }
 
   if (!Number.isInteger(quantity) || quantity < 1) {
     return { error: "Quantity must be at least 1." };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc("place_order_batch", {
-    product_uuid: productId,
-    buyer_uuid: profile.id,
-    quantity_int: quantity
-  });
-
-  if (error) {
-    if (quantity === 1) {
-      const { error: singleOrderError } = await supabase.rpc("place_order", {
-        product_uuid: productId,
-        buyer_uuid: profile.id
-      });
-
-      if (!singleOrderError) {
-        redirect("/orders");
-      }
-
-      return { error: singleOrderError.message };
-    }
-
-    return { error: error.message };
+  try {
+    await placeMarketplaceOrder({
+      buyerId: profile.id,
+      items: [{ listing_id: listingId, quantity }]
+    });
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Unable to place the order."
+    };
   }
 
   redirect("/orders");
@@ -55,60 +45,18 @@ export async function cancelOrderGroupAction(
   formData: FormData
 ): Promise<ActionState> {
   const { profile } = await requireRole(["customer"]);
-  const orderGroupId = String(formData.get("order_group_id") ?? "").trim();
+  const orderId = String(formData.get("order_id") ?? "").trim();
 
-  if (!orderGroupId) {
-    return { error: "Order group ID is required." };
+  if (!orderId) {
+    return { error: "Order ID is required." };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data: orders, error } = await supabase
-    .from("orders")
-    .select("id, unit_id, status")
-    .eq("order_group_id", orderGroupId)
-    .eq("buyer_id", profile.id);
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  if (!orders || orders.length === 0) {
-    return { error: "Order not found." };
-  }
-
-  const hasShippedOrDelivered = orders.some(
-    (order) => order.status === "shipped" || order.status === "delivered"
-  );
-
-  if (hasShippedOrDelivered) {
-    return { error: "Only orders that have not shipped can be cancelled." };
-  }
-
-  const orderedUnitIds = orders
-    .filter((order) => order.status === "ordered")
-    .map((order) => order.unit_id)
-    .filter(Boolean);
-
-  const { error: cancelError } = await supabase
-    .from("orders")
-    .update({ status: "cancelled" })
-    .eq("order_group_id", orderGroupId)
-    .eq("buyer_id", profile.id)
-    .eq("status", "ordered");
-
-  if (cancelError) {
-    return { error: cancelError.message };
-  }
-
-  if (orderedUnitIds.length > 0) {
-    const { error: unitError } = await supabase
-      .from("product_units")
-      .update({ status: "available" })
-      .in("id", orderedUnitIds);
-
-    if (unitError) {
-      return { error: unitError.message };
-    }
+  try {
+    await cancelMarketplaceOrder(orderId, profile.id);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Unable to cancel this order."
+    };
   }
 
   revalidatePath("/orders");
@@ -126,71 +74,34 @@ export async function updateOrderStatusAction(formData: FormData) {
     redirect(roleHome(profile.role));
   }
 
-  const orderId = String(formData.get("order_id") ?? "").trim();
+  const subOrderId = String(formData.get("sub_order_id") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
 
   if (
-    !orderId ||
-    !["ordered", "shipped", "delivered", "cancelled"].includes(status)
+    !subOrderId ||
+    ![
+      "placed",
+      "confirmed",
+      "packed",
+      "shipped",
+      "out_for_delivery",
+      "delivered",
+      "cancelled",
+      "returned"
+    ].includes(status)
   ) {
     return;
   }
 
-  const { data: orderRecord } = await supabase
-    .from("orders")
-    .select(
-      `
-      id,
-      product_id,
-      unit_id,
-      status,
-      product:products!orders_product_id_fkey (
-        seller_id
-      )
-    `
-    )
-    .eq("id", orderId)
-    .maybeSingle();
+  const { error } = await supabase
+    .schema("marketplace")
+    .rpc("update_suborder_status", {
+      sub_order_uuid: subOrderId,
+      next_status: status
+    });
 
-  const order = Array.isArray(orderRecord) ? orderRecord[0] : orderRecord;
-  const orderObject =
-    order && typeof order === "object" ? (order as Record<string, unknown>) : undefined;
-  const rawProduct = orderObject?.product;
-  const product =
-    rawProduct && typeof rawProduct === "object"
-      ? (Array.isArray(rawProduct) ? rawProduct[0] : rawProduct) as Record<string, unknown>
-      : undefined;
-  const sellerId = product && typeof product.seller_id === "string" ? product.seller_id : "";
-  const currentStatus =
-    typeof orderObject?.status === "string" ? orderObject.status : "ordered";
-
-  if (!order || (profile.role === "seller" && sellerId !== profile.id)) {
-    redirect(roleHome(profile.role));
-  }
-
-  if (status === "cancelled" && currentStatus !== "ordered") {
+  if (error) {
     return;
-  }
-
-  if (currentStatus === "cancelled" && status !== "cancelled") {
-    return;
-  }
-
-  await supabase.from("orders").update({ status }).eq("id", orderId);
-
-  const unitStatus =
-    status === "delivered"
-      ? "delivered"
-      : status === "cancelled"
-      ? "available"
-      : "sold";
-  const unitId =
-    typeof orderObject?.unit_id === "string"
-      ? orderObject.unit_id
-      : "";
-
-  if (unitId) {
-    await supabase.from("product_units").update({ status: unitStatus }).eq("id", unitId);
   }
 
   revalidatePath("/dashboard/orders");

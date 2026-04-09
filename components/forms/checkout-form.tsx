@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { ActionState } from "@/types";
 
 type CheckoutFormProps = {
-  productId: string;
-  availableUnits: number;
+  listingId: string;
+  availableStock: number;
   action: (
     prevState: ActionState,
     formData: FormData
@@ -16,12 +16,12 @@ type CheckoutFormProps = {
 
 const initialState: ActionState = {};
 
-export function CheckoutForm({ productId, availableUnits, action }: CheckoutFormProps) {
+export function CheckoutForm({ listingId, availableStock, action }: CheckoutFormProps) {
   const [state, formAction, pending] = useActionState(action, initialState);
 
   return (
     <form action={formAction} className="space-y-4">
-      <input name="product_id" type="hidden" value={productId} />
+      <input name="listing_id" type="hidden" value={listingId} />
       <div className="space-y-2">
         <label className="text-sm font-medium text-slate-700" htmlFor="quantity">
           Quantity
@@ -29,7 +29,7 @@ export function CheckoutForm({ productId, availableUnits, action }: CheckoutForm
         <Input
           defaultValue={1}
           id="quantity"
-          max={Math.min(availableUnits, 10)}
+          max={Math.min(availableStock, 10)}
           min="1"
           name="quantity"
           required
@@ -37,7 +37,7 @@ export function CheckoutForm({ productId, availableUnits, action }: CheckoutForm
           type="number"
         />
         <p className="text-xs text-slate-500">
-          Pick up to {Math.min(availableUnits, 10)} unit{Math.min(availableUnits, 10) === 1 ? "" : "s"} for this order.
+          Pick up to {Math.min(availableStock, 10)} unit{Math.min(availableStock, 10) === 1 ? "" : "s"} for this order.
         </p>
       </div>
       {state.error ? (
@@ -46,7 +46,7 @@ export function CheckoutForm({ productId, availableUnits, action }: CheckoutForm
         </p>
       ) : null}
       <Button className="w-full" disabled={pending} type="submit">
-        {pending ? "Assigning units..." : "Confirm purchase"}
+        {pending ? "Placing order..." : "Confirm purchase"}
       </Button>
     </form>
   );

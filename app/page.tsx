@@ -3,7 +3,8 @@ import { ProductCard } from "@/components/products/product-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { getCategories, getHomepageProducts } from "@/lib/data";
+import { getCategories } from "@/lib/data";
+import { getMarketplaceProducts } from "@/lib/marketplace";
 
 type HomePageProps = {
   searchParams?: Promise<{
@@ -33,14 +34,40 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       : undefined;
   const category = params?.category?.trim() ?? "";
 
-  const products = await getHomepageProducts({
-    search: query,
-    stock,
-    sort,
-    maxPrice: safeMaxPrice,
-    category: category || undefined
-  });
   const categories = await getCategories();
+  let products = await getMarketplaceProducts({
+    search: query,
+    sort
+  });
+
+  if (category) {
+    products = products.filter((product) => product.category_id === category);
+  }
+
+  if (typeof safeMaxPrice === "number") {
+    products = products.filter((product) =>
+      (product.variants ?? []).some((variant) =>
+        (variant.listings ?? []).some((listing) => listing.price <= safeMaxPrice)
+      )
+    );
+  }
+
+  if (stock === "in_stock") {
+    products = products.filter((product) =>
+      (product.variants ?? []).some((variant) =>
+        (variant.listings ?? []).some((listing) => listing.available_stock > 0)
+      )
+    );
+  }
+
+  if (stock === "sold_out") {
+    products = products.filter(
+      (product) =>
+        !(product.variants ?? []).some((variant) =>
+          (variant.listings ?? []).some((listing) => listing.available_stock > 0)
+        )
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-3 py-6 sm:px-4 md:px-6 lg:px-8 lg:py-8">

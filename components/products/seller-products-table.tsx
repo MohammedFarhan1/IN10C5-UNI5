@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Table } from "@/components/ui/table";
-import { ActionState, ProductWithDetails } from "@/types";
+import { ActionState, MarketplaceProductWithDetails } from "@/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 type SellerProductsTableProps = {
@@ -12,11 +12,39 @@ type SellerProductsTableProps = {
     prevState: ActionState,
     formData: FormData
   ) => Promise<ActionState>;
-  products: ProductWithDetails[];
+  products: MarketplaceProductWithDetails[];
   query?: string;
 };
 
 const initialState: ActionState = {};
+
+function getVariantCount(product: MarketplaceProductWithDetails) {
+  return product.variants?.length ?? 0;
+}
+
+function getListingCount(product: MarketplaceProductWithDetails) {
+  return (product.variants ?? []).reduce(
+    (sum, variant) => sum + (variant.listings?.length ?? 0),
+    0
+  );
+}
+
+function getTotalStock(product: MarketplaceProductWithDetails) {
+  return (product.variants ?? []).reduce(
+    (sum, variant) =>
+      sum +
+      (variant.listings ?? []).reduce((listingSum, listing) => listingSum + listing.available_stock, 0),
+    0
+  );
+}
+
+function getMinPrice(product: MarketplaceProductWithDetails) {
+  const prices = (product.variants ?? []).flatMap((variant) =>
+    (variant.listings ?? []).map((listing) => listing.price)
+  );
+
+  return prices.length > 0 ? Math.min(...prices) : null;
+}
 
 export function SellerProductsTable({ action, products, query = "" }: SellerProductsTableProps) {
   const [state, formAction, pending] = useActionState(action, initialState);
@@ -45,11 +73,16 @@ export function SellerProductsTable({ action, products, query = "" }: SellerProd
         <div>
           <p className="text-sm font-semibold text-brand-ink">Bulk actions</p>
           <p className="text-sm text-slate-600">
-            Select multiple products or all visible products to delete them in one step.
+            Select one or more catalog products to remove their variants and seller listings together.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={productIds.length === 0} onClick={toggleSelectAll} type="button" variant="secondary">
+          <Button
+            disabled={productIds.length === 0}
+            onClick={toggleSelectAll}
+            type="button"
+            variant="secondary"
+          >
             {allSelected ? "Clear selection" : "Select all"}
           </Button>
           <Button disabled={selectedIds.length === 0 || pending} type="submit" variant="danger">
@@ -62,10 +95,10 @@ export function SellerProductsTable({ action, products, query = "" }: SellerProd
         <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{state.error}</p>
       ) : null}
 
-      <Table headers={["Select", "Product", "Price", "Available", "Created", "Total units", "Actions"]}>
+      <Table headers={["Select", "Product", "Variants", "Listings", "Starting price", "Stock", "Created", "Actions"]}>
         {products.map((product) => {
-          const available = product.units?.filter((unit) => unit.status === "available").length ?? 0;
           const checked = selectedIds.includes(product.id);
+          const minPrice = getMinPrice(product);
 
           return (
             <tr key={product.id}>
@@ -80,18 +113,19 @@ export function SellerProductsTable({ action, products, query = "" }: SellerProd
                 />
               </td>
               <td className="px-5 py-4">
-                <div>
+                <div className="space-y-1">
                   <p className="font-medium text-brand-ink">{product.name}</p>
-                  {product.custom_product_id ? (
-                    <p className="text-xs font-medium text-brand-pine">Custom ID: {product.custom_product_id}</p>
-                  ) : null}
+                  <p className="text-xs font-medium text-brand-pine">{product.brand}</p>
                   <p className="text-xs text-slate-500">{product.id}</p>
                 </div>
               </td>
-              <td className="px-5 py-4 font-medium text-brand-ink">{formatCurrency(product.price)}</td>
-              <td className="px-5 py-4 text-slate-600">{available}</td>
+              <td className="px-5 py-4 text-slate-600">{getVariantCount(product)}</td>
+              <td className="px-5 py-4 text-slate-600">{getListingCount(product)}</td>
+              <td className="px-5 py-4 font-medium text-brand-ink">
+                {minPrice == null ? "No listings" : formatCurrency(minPrice)}
+              </td>
+              <td className="px-5 py-4 text-slate-600">{getTotalStock(product)}</td>
               <td className="px-5 py-4 text-slate-600">{formatDate(product.created_at)}</td>
-              <td className="px-5 py-4 text-slate-600">{product.total_units}</td>
               <td className="px-5 py-4">
                 <Link href={`/dashboard/products/${product.id}/edit`}>
                   <Button variant="secondary">Edit</Button>

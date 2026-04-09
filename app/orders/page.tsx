@@ -1,21 +1,20 @@
-import Link from "next/link";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Table } from "@/components/ui/table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { CancelOrderButton } from "@/components/cart/cancel-order-button";
-import { getBuyerOrderGroups } from "@/lib/data";
+import { OrderTimeline } from "@/components/orders/order-timeline";
+import { getMarketplaceBuyerOrders } from "@/lib/marketplace";
 import { requireRole } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 export default async function OrdersPage() {
   const { profile } = await requireRole(["customer"]);
-  const orders = await getBuyerOrderGroups(profile.id);
+  const orders = await getMarketplaceBuyerOrders(profile.id);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 lg:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <PageHeader
-        description="Review the unit assigned to each purchase and jump directly into the tracking page."
+        description="Track every order with a structured order ID and a live delivery timeline."
         eyebrow="Buyer account"
         title="My orders"
       />
@@ -25,57 +24,71 @@ export default async function OrdersPage() {
           <EmptyState
             actionHref="/"
             actionLabel="Browse products"
-            description="Once you buy a product, the assigned unit code and order status will appear here."
+            description="Your marketplace orders and delivery timeline will appear here."
             title="No orders yet"
           />
         </div>
       ) : (
-        <div className="mt-8">
-          <Table headers={["Product", "Quantity", "Units", "Status", "Date", "Amount", "Actions"]}>
-            {orders.map((order) => (
-              <tr key={order.order_group_id}>
-                <td className="px-5 py-4">
-                  <div>
-                    <p className="font-medium text-brand-ink">{order.product_name}</p>
-                    <p className="text-xs text-slate-500">Order #{order.order_group_id.slice(0, 8)}</p>
-                  </div>
-                </td>
-                <td className="px-5 py-4 text-slate-600">{order.quantity}</td>
-                <td className="px-5 py-4">
-                  <div className="flex flex-col gap-1">
-                    {order.unit_codes.slice(0, 3).map((unitCode) => (
-                      <Link
-                        className="font-medium text-brand-pine hover:text-brand-ink"
-                        href={`/track/${unitCode}`}
-                        key={unitCode}
-                      >
-                        {unitCode}
-                      </Link>
-                    ))}
-                    {order.unit_codes.length > 3 ? (
-                      <span className="text-xs text-slate-500">
-                        +{order.unit_codes.length - 3} more units
-                      </span>
-                    ) : null}
-                  </div>
-                </td>
-                <td className="px-5 py-4">
+        <div className="mt-8 space-y-6">
+          {orders.map((order) => (
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-soft" key={order.id}>
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-pine">
+                    {order.order_id}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-500">{formatDate(order.created_at)}</p>
+                </div>
+                <div className="flex items-center gap-3">
                   <StatusBadge value={order.status} />
-                </td>
-                <td className="px-5 py-4 text-slate-600">{formatDate(order.created_at)}</td>
-                <td className="px-5 py-4 font-medium text-brand-ink">
-                  {formatCurrency(order.total_amount)}
-                </td>
-                <td className="px-5 py-4">
-                  {order.status === "ordered" ? (
-                    <CancelOrderButton orderGroupId={order.order_group_id} />
-                  ) : (
-                    <span className="text-xs text-slate-500">No actions available</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </Table>
+                  {order.status !== "delivered" &&
+                  order.status !== "cancelled" &&
+                  order.status !== "returned" ? (
+                    <CancelOrderButton orderId={order.id} />
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-brand-ink">Order items</p>
+                  {(order.items ?? []).map((item) => (
+                    <div
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                      key={item.id}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-brand-ink">{item.product_name}</p>
+                          <p className="mt-1 text-sm text-slate-600">{item.variant_name}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            SKU {item.seller_sku}
+                            {item.seller?.display_name || item.seller?.business_name
+                              ? ` • ${item.seller.display_name || item.seller.business_name}`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-brand-pine">{formatCurrency(item.unit_price)}</p>
+                          <p className="text-xs text-slate-500">Qty {item.quantity}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-900 px-4 py-3 text-white">
+                    <span className="text-sm font-medium">Order total</span>
+                    <span className="text-lg font-semibold">{formatCurrency(order.total_amount)}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-3 text-sm font-semibold text-brand-ink">Tracking timeline</p>
+                  <OrderTimeline entries={order.tracking ?? []} />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -7,19 +7,19 @@ import { ActionState } from "@/types";
 import { addToCartAction } from "@/lib/actions/cart";
 
 type AddToCartFormProps = {
-  productId: string;
+  listingId: string;
   maxQuantity: number;
 };
 
 const initialState: ActionState = {};
 
-export function AddToCartForm({ productId, maxQuantity }: AddToCartFormProps) {
+export function AddToCartForm({ listingId, maxQuantity }: AddToCartFormProps) {
   const [state, formAction, pending] = useActionState(addToCartAction, initialState);
 
   return (
     <div className="flex flex-col">
       <form action={formAction} className="flex items-center gap-4">
-        <input name="product_id" type="hidden" value={productId} />
+        <input name="listing_id" type="hidden" value={listingId} />
         <Input
           className="w-20 h-12 rounded-xl"
           defaultValue="1"
