@@ -288,7 +288,7 @@ export function MarketplaceVariantManager({
                     value={draft.attributes}
                     onChange={(event) => updateDraft(draft.id, "attributes", event.target.value)}
                   />
-                  <p className="text-xs text-slate-500">Enter one attribute per line, for example "Material: Cotton".</p>
+                  <p className="text-xs text-slate-500">Enter one attribute per line, for example &quot;Material: Cotton&quot;.</p>
                 </div>
               </div>
             </div>
@@ -302,3 +302,4 @@ export function MarketplaceVariantManager({
     </form>
   );
 }
+
