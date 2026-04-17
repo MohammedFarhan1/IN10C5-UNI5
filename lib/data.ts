@@ -1,6 +1,7 @@
 import {
   CartItem,
   Category,
+  AccountStatus,
   OrderStatus,
   OrderGroupSummary,
   OrderWithDetails,
@@ -12,6 +13,7 @@ import {
   UserProfile
 } from "@/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSellerDocumentSignedUrl } from "@/lib/seller-documents";
 
 type HomepageProductFilters = {
   search?: string;
@@ -112,6 +114,15 @@ function asRole(value: unknown): Role {
   return role === "seller" || role === "admin" ? role : "customer";
 }
 
+function asAccountStatus(value: unknown): AccountStatus {
+  const status = asString(value);
+  if (status === "pending" || status === "rejected") {
+    return status;
+  }
+
+  return "approved";
+}
+
 function asUnitStatus(value: unknown): ProductUnitStatus {
   const status = asString(value);
   if (status === "sold" || status === "delivered") {
@@ -163,11 +174,23 @@ function mapUserProfile(record: RawRecord): UserProfile {
     email: asString(record.email),
     role: asRole(record.role),
     full_name: asNullableString(record.full_name),
+    business_name: asNullableString(record.business_name),
+    spoc_name: asNullableString(record.spoc_name),
+    cin: asNullableString(record.cin),
+    gst: asNullableString(record.gst),
+    trademark_url: asNullableString(record.trademark_url),
+    document_url: asNullableString(record.document_url),
     mobile_number: asNullableString(record.mobile_number),
     address: asNullableString(record.address),
+    account_status: asAccountStatus(record.account_status),
     created_at: asString(record.created_at)
   };
 }
+
+export type SellerVerificationRecord = UserProfile & {
+  trademark_signed_url: string | null;
+  document_signed_url: string | null;
+};
 
 function mapUnit(record: RawRecord): ProductUnit {
   return {
@@ -702,7 +725,9 @@ export async function getAdminUsers() {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("users")
-    .select("id, email, role, full_name, mobile_number, address, created_at")
+    .select(
+      "id, email, role, full_name, business_name, spoc_name, cin, gst, trademark_url, document_url, mobile_number, address, account_status, created_at"
+    )
     .order("created_at", { ascending: false });
 
   return asRecords(data).map(mapUserProfile);
@@ -712,7 +737,9 @@ export async function getAdminUserById(userId: string) {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("users")
-    .select("id, email, role, full_name, mobile_number, address, created_at")
+    .select(
+      "id, email, role, full_name, business_name, spoc_name, cin, gst, trademark_url, document_url, mobile_number, address, account_status, created_at"
+    )
     .eq("id", userId)
     .maybeSingle();
 
@@ -729,12 +756,42 @@ export async function getCustomerProfile(userId: string) {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("users")
-    .select("id, email, role, full_name, mobile_number, address, created_at")
+    .select(
+      "id, email, role, full_name, business_name, spoc_name, cin, gst, trademark_url, document_url, mobile_number, address, account_status, created_at"
+    )
     .eq("id", userId)
     .maybeSingle();
 
   const record = asRecord(data);
   return record ? mapUserProfile(record) : null;
+}
+
+export async function getAdminSellerVerifications() {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("users")
+    .select(
+      "id, email, role, full_name, business_name, spoc_name, cin, gst, trademark_url, document_url, mobile_number, address, account_status, created_at"
+    )
+    .eq("role", "seller")
+    .order("created_at", { ascending: false });
+
+  const sellers = asRecords(data).map(mapUserProfile);
+
+  return Promise.all(
+    sellers.map(async (seller) => {
+      const [trademarkSignedUrl, documentSignedUrl] = await Promise.all([
+        getSellerDocumentSignedUrl(seller.trademark_url),
+        getSellerDocumentSignedUrl(seller.document_url)
+      ]);
+
+      return {
+        ...seller,
+        trademark_signed_url: trademarkSignedUrl,
+        document_signed_url: documentSignedUrl
+      } satisfies SellerVerificationRecord;
+    })
+  );
 }
 
 export async function getAdminProducts() {

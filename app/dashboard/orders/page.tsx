@@ -5,12 +5,13 @@ import { PageHeader } from "@/components/layout/page-header";
 import { OrderTimeline } from "@/components/orders/order-timeline";
 import { updateOrderStatusAction } from "@/lib/actions/orders";
 import { getMarketplaceSellerOrders } from "@/lib/marketplace";
-import { requireRole } from "@/lib/auth";
+import { isSellerApproved, requireRole } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 export default async function SellerOrdersPage() {
   const { profile } = await requireRole(["seller"]);
-  const orders = await getMarketplaceSellerOrders(profile.id);
+  const isApproved = isSellerApproved(profile);
+  const orders = isApproved ? await getMarketplaceSellerOrders(profile.id) : [];
 
   return (
     <div className="space-y-8">
@@ -22,9 +23,13 @@ export default async function SellerOrdersPage() {
 
       {orders.length === 0 ? (
         <EmptyState
-          actionHref="/dashboard/products/add"
-          actionLabel="Add a product"
-          description="Orders will appear here once a buyer purchases one of your active listings."
+          actionHref={isApproved ? "/dashboard/products/add" : undefined}
+          actionLabel={isApproved ? "Add a product" : undefined}
+          description={
+            isApproved
+              ? "Orders will appear here once a buyer purchases one of your active listings."
+              : "Orders will appear here after your seller account is approved and your listings go live."
+          }
           title="No orders yet"
         />
       ) : (

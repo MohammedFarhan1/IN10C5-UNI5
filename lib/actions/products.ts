@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ActionState } from "@/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth";
+import { requireApprovedSeller } from "@/lib/auth";
 import { getSellerOwnedProduct } from "@/lib/data";
 
 const MARKETPLACE_SETUP_GUIDE =
@@ -531,7 +531,7 @@ export async function createProductAction(
   _prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { profile } = await requireRole(["seller"]);
+  const { profile } = await requireApprovedSeller();
 
   const name = String(formData.get("name") ?? "").trim();
   const customProductId = String(formData.get("custom_product_id") ?? "").trim();
@@ -875,7 +875,7 @@ export async function bulkCreateProductsAction(
   _prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { profile } = await requireRole(["seller"]);
+  const { profile } = await requireApprovedSeller();
 
   let parsedProducts: BulkProductUploadRecord[] = [];
 
@@ -973,7 +973,7 @@ export async function updateProductAction(
   _prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { profile } = await requireRole(["seller"]);
+  const { profile } = await requireApprovedSeller();
   const productId = String(formData.get("product_id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
@@ -1031,7 +1031,7 @@ export async function updateMarketplaceVariantsAction(
   _prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { profile } = await requireRole(["seller"]);
+  const { profile } = await requireApprovedSeller();
   const productId = String(formData.get("product_id") ?? "").trim();
   const rawVariantsPayload = String(formData.get("variants_payload") ?? "").trim();
 
@@ -1216,7 +1216,7 @@ export async function updateMarketplaceProductAction(
   _prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { profile } = await requireRole(["seller"]);
+  const { profile } = await requireApprovedSeller();
   const productId = String(formData.get("product_id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   const brand = String(formData.get("brand") ?? "").trim();
@@ -1315,7 +1315,7 @@ export async function importProductUnitsAction(
   _prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { profile } = await requireRole(["seller"]);
+  const { profile } = await requireApprovedSeller();
   const productId = String(formData.get("product_id") ?? "").trim();
 
   if (!productId) {
@@ -1439,7 +1439,7 @@ export async function deleteSelectedProductsAction(
   _prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const { profile } = await requireRole(["seller"]);
+  const { profile } = await requireApprovedSeller();
   const productIds = formData
     .getAll("product_ids")
     .map((value) => String(value).trim())

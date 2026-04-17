@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { Role, UserProfile } from "@/types";
+import { AccountStatus, Role, UserProfile } from "@/types";
 import { roleHome } from "@/lib/utils";
+
+function asAccountStatus(value: unknown): AccountStatus {
+  return value === "pending" || value === "rejected" ? value : "approved";
+}
 
 export async function getCurrentSession() {
   const supabase = await createSupabaseServerClient();
@@ -15,14 +19,21 @@ export async function getCurrentSession() {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("id, email, role, full_name, mobile_number, address, created_at")
+    .select(
+      "id, email, role, full_name, business_name, spoc_name, cin, gst, trademark_url, document_url, mobile_number, address, account_status, created_at"
+    )
     .eq("id", user.id)
     .maybeSingle();
 
   return {
     supabase,
     user,
-    profile: (profile as UserProfile | null) ?? null
+    profile: profile
+      ? ({
+          ...profile,
+          account_status: asAccountStatus(profile.account_status)
+        } as UserProfile)
+      : null
   };
 }
 
@@ -50,4 +61,18 @@ export async function redirectIfAuthenticated() {
   if (context.profile) {
     redirect(roleHome(context.profile.role));
   }
+}
+
+export function isSellerApproved(profile: Pick<UserProfile, "role" | "account_status">) {
+  return profile.role === "seller" && profile.account_status === "approved";
+}
+
+export async function requireApprovedSeller() {
+  const context = await requireRole(["seller"]);
+
+  if (context.profile.account_status !== "approved") {
+    redirect("/dashboard");
+  }
+
+  return context;
 }

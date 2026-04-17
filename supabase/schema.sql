@@ -27,19 +27,42 @@
       end if;
     end $$;
 
+    do $$
+    begin
+      if not exists (
+        select 1 from pg_type where typname = 'account_status' and typnamespace = 'public'::regnamespace
+      ) then
+        create type public.account_status as enum ('pending', 'approved', 'rejected');
+      end if;
+    end $$;
+
     create table if not exists public.users (
       id uuid primary key references auth.users (id) on delete cascade,
       email text not null unique,
       role public.user_role not null,
       full_name text,
+      business_name text,
+      spoc_name text,
+      cin text,
+      gst text,
+      trademark_url text,
+      document_url text,
       mobile_number text,
       address text,
+      account_status public.account_status not null default 'approved',
       created_at timestamptz not null default timezone('utc', now())
     );
 
     alter table public.users add column if not exists full_name text;
+    alter table public.users add column if not exists business_name text;
+    alter table public.users add column if not exists spoc_name text;
+    alter table public.users add column if not exists cin text;
+    alter table public.users add column if not exists gst text;
+    alter table public.users add column if not exists trademark_url text;
+    alter table public.users add column if not exists document_url text;
     alter table public.users add column if not exists mobile_number text;
     alter table public.users add column if not exists address text;
+    alter table public.users add column if not exists account_status public.account_status not null default 'approved';
 
     create table if not exists public.products (
       id uuid primary key default gen_random_uuid(),
@@ -96,16 +119,50 @@
     security definer
     set search_path = public
     as $$
+    declare
+      next_role public.user_role := coalesce((new.raw_user_meta_data ->> 'role')::public.user_role, 'customer');
+      next_status public.account_status := coalesce(
+        (new.raw_user_meta_data ->> 'account_status')::public.account_status,
+        case when coalesce((new.raw_user_meta_data ->> 'role')::public.user_role, 'customer') = 'seller'
+          then 'pending'::public.account_status
+          else 'approved'::public.account_status
+        end
+      );
     begin
-      insert into public.users (id, email, role)
+      insert into public.users (
+        id,
+        email,
+        role,
+        full_name,
+        business_name,
+        spoc_name,
+        cin,
+        gst,
+        mobile_number,
+        account_status
+      )
       values (
         new.id,
         new.email,
-        coalesce((new.raw_user_meta_data ->> 'role')::public.user_role, 'customer')
+        next_role,
+        nullif(new.raw_user_meta_data ->> 'full_name', ''),
+        nullif(new.raw_user_meta_data ->> 'business_name', ''),
+        nullif(new.raw_user_meta_data ->> 'spoc_name', ''),
+        nullif(new.raw_user_meta_data ->> 'cin', ''),
+        nullif(new.raw_user_meta_data ->> 'gst', ''),
+        nullif(new.raw_user_meta_data ->> 'mobile_number', ''),
+        next_status
       )
       on conflict (id) do update
         set email = excluded.email,
-            role = excluded.role;
+            role = excluded.role,
+            full_name = coalesce(public.users.full_name, excluded.full_name),
+            business_name = coalesce(public.users.business_name, excluded.business_name),
+            spoc_name = coalesce(public.users.spoc_name, excluded.spoc_name),
+            cin = coalesce(public.users.cin, excluded.cin),
+            gst = coalesce(public.users.gst, excluded.gst),
+            mobile_number = coalesce(public.users.mobile_number, excluded.mobile_number),
+            account_status = coalesce(public.users.account_status, excluded.account_status);
 
       return new;
     end;
@@ -126,6 +183,23 @@
         select 1
         from public.users
         where id = user_id and role = 'admin'
+      );
+    $$;
+
+    create or replace function public.is_approved_seller(user_id uuid)
+    returns boolean
+    language sql
+    stable
+    set search_path = public
+    as $$
+      select exists (
+        select 1
+        from public.users
+        where id = user_id
+          and (
+            role = 'admin'
+            or (role = 'seller' and account_status = 'approved')
+          )
       );
     $$;
 
@@ -240,22 +314,28 @@
       on public.products for insert
       with check (
         seller_id = auth.uid()
-        and exists (
-          select 1 from public.users
-          where id = auth.uid() and role in ('seller', 'admin')
-        )
+        and public.is_approved_seller(auth.uid())
       );
 
     drop policy if exists "sellers can update their own products" on public.products;
     create policy "sellers can update their own products"
       on public.products for update
-      using (seller_id = auth.uid() or public.is_admin(auth.uid()))
-      with check (seller_id = auth.uid() or public.is_admin(auth.uid()));
+      using (
+        (seller_id = auth.uid() and public.is_approved_seller(auth.uid()))
+        or public.is_admin(auth.uid())
+      )
+      with check (
+        (seller_id = auth.uid() and public.is_approved_seller(auth.uid()))
+        or public.is_admin(auth.uid())
+      );
 
     drop policy if exists "sellers can delete their own products" on public.products;
     create policy "sellers can delete their own products"
       on public.products for delete
-      using (seller_id = auth.uid() or public.is_admin(auth.uid()));
+      using (
+        (seller_id = auth.uid() and public.is_approved_seller(auth.uid()))
+        or public.is_admin(auth.uid())
+      );
 
     drop policy if exists "sellers can insert their own product units" on public.product_units;
     create policy "sellers can insert their own product units"
@@ -265,7 +345,10 @@
           select 1
           from public.products p
           where p.id = product_id
-            and (p.seller_id = auth.uid() or public.is_admin(auth.uid()))
+            and (
+              (p.seller_id = auth.uid() and public.is_approved_seller(auth.uid()))
+              or public.is_admin(auth.uid())
+            )
         )
       );
 
@@ -277,7 +360,10 @@
           select 1
           from public.products p
           where p.id = product_id
-            and (p.seller_id = auth.uid() or public.is_admin(auth.uid()))
+            and (
+              (p.seller_id = auth.uid() and public.is_approved_seller(auth.uid()))
+              or public.is_admin(auth.uid())
+            )
         )
       )
       with check (
@@ -285,7 +371,10 @@
           select 1
           from public.products p
           where p.id = product_id
-            and (p.seller_id = auth.uid() or public.is_admin(auth.uid()))
+            and (
+              (p.seller_id = auth.uid() and public.is_approved_seller(auth.uid()))
+              or public.is_admin(auth.uid())
+            )
         )
       );
 
@@ -774,16 +863,24 @@ begin
     values (
       new.id,
       new.email,
-      coalesce(new.full_name, split_part(new.email, '@', 1)),
-      new.full_name,
-      true
+      coalesce(new.spoc_name, new.full_name, split_part(new.email, '@', 1)),
+      coalesce(new.business_name, new.full_name),
+      case
+        when new.role = 'admin' then true
+        else new.account_status = 'approved'
+      end
     )
     on conflict (id) do update
       set email = excluded.email,
-          display_name = coalesce(new.full_name, split_part(new.email, '@', 1)),
-          business_name = new.full_name,
-          is_active = true,
+          display_name = excluded.display_name,
+          business_name = excluded.business_name,
+          is_active = excluded.is_active,
           updated_at = timezone('utc', now());
+  else
+    update marketplace.sellers
+    set is_active = false,
+        updated_at = timezone('utc', now())
+    where id = new.id;
   end if;
 
   return new;
@@ -799,16 +896,19 @@ insert into marketplace.sellers (id, email, display_name, business_name, is_acti
 select
   u.id,
   u.email,
-  coalesce(u.full_name, split_part(u.email, '@', 1)),
-  u.full_name,
-  true
+  coalesce(u.spoc_name, u.full_name, split_part(u.email, '@', 1)),
+  coalesce(u.business_name, u.full_name),
+  case
+    when u.role = 'admin' then true
+    else u.account_status = 'approved'
+  end
 from public.users u
 where u.role in ('seller', 'admin')
 on conflict (id) do update
   set email = excluded.email,
       display_name = excluded.display_name,
       business_name = excluded.business_name,
-      is_active = true,
+      is_active = excluded.is_active,
       updated_at = timezone('utc', now());
 
 create or replace function marketplace.set_variant_qr_target()
@@ -1108,11 +1208,13 @@ begin
       l.fulfillment_type,
       l.status,
       l.available_stock,
+      s.is_active,
       v.product_id,
       v.name as variant_name,
       p.name as product_name
     into listing_record
     from marketplace.listings l
+    join marketplace.sellers s on s.id = l.seller_id
     join marketplace.variants v on v.id = l.variant_id
     join marketplace.products p on p.id = v.product_id
     where l.id = listing_uuid
@@ -1124,6 +1226,10 @@ begin
 
     if listing_record.status <> 'active' then
       raise exception 'Listing % is not active.', listing_uuid;
+    end if;
+
+    if not listing_record.is_active then
+      raise exception 'Listing % is not available because the seller is not currently active.', listing_uuid;
     end if;
 
     if listing_record.available_stock < quantity_int then
@@ -1390,24 +1496,28 @@ create policy "sellers can insert marketplace products"
   on marketplace.products for insert
   with check (
     created_by = auth.uid()
-    and exists (
-      select 1
-      from public.users
-      where id = auth.uid()
-        and role in ('seller', 'admin')
-    )
+    and public.is_approved_seller(auth.uid())
   );
 
 drop policy if exists "product creators can update marketplace products" on marketplace.products;
 create policy "product creators can update marketplace products"
   on marketplace.products for update
-  using (created_by = auth.uid() or public.is_admin(auth.uid()))
-  with check (created_by = auth.uid() or public.is_admin(auth.uid()));
+  using (
+    (created_by = auth.uid() and public.is_approved_seller(auth.uid()))
+    or public.is_admin(auth.uid())
+  )
+  with check (
+    (created_by = auth.uid() and public.is_approved_seller(auth.uid()))
+    or public.is_admin(auth.uid())
+  );
 
 drop policy if exists "product creators can delete marketplace products" on marketplace.products;
 create policy "product creators can delete marketplace products"
   on marketplace.products for delete
-  using (created_by = auth.uid() or public.is_admin(auth.uid()));
+  using (
+    (created_by = auth.uid() and public.is_approved_seller(auth.uid()))
+    or public.is_admin(auth.uid())
+  );
 
 drop policy if exists "public can view marketplace variants" on marketplace.variants;
 create policy "public can view marketplace variants"
@@ -1419,20 +1529,26 @@ create policy "product creators can manage marketplace variants"
   on marketplace.variants for all
   using (
     public.is_admin(auth.uid())
-    or exists (
-      select 1
-      from marketplace.products p
-      where p.id = product_id
-        and p.created_by = auth.uid()
+    or (
+      public.is_approved_seller(auth.uid())
+      and exists (
+        select 1
+        from marketplace.products p
+        where p.id = product_id
+          and p.created_by = auth.uid()
+      )
     )
   )
   with check (
     public.is_admin(auth.uid())
-    or exists (
-      select 1
-      from marketplace.products p
-      where p.id = product_id
-        and p.created_by = auth.uid()
+    or (
+      public.is_approved_seller(auth.uid())
+      and exists (
+        select 1
+        from marketplace.products p
+        where p.id = product_id
+          and p.created_by = auth.uid()
+      )
     )
   );
 
@@ -1440,7 +1556,15 @@ drop policy if exists "public can view active marketplace listings" on marketpla
 create policy "public can view active marketplace listings"
   on marketplace.listings for select
   using (
-    status = 'active'
+    (
+      status = 'active'
+      and exists (
+        select 1
+        from marketplace.sellers s
+        where s.id = seller_id
+          and s.is_active
+      )
+    )
     or seller_id = auth.uid()
     or public.is_admin(auth.uid())
   );
@@ -1448,8 +1572,14 @@ create policy "public can view active marketplace listings"
 drop policy if exists "sellers can manage their marketplace listings" on marketplace.listings;
 create policy "sellers can manage their marketplace listings"
   on marketplace.listings for all
-  using (seller_id = auth.uid() or public.is_admin(auth.uid()))
-  with check (seller_id = auth.uid() or public.is_admin(auth.uid()));
+  using (
+    (seller_id = auth.uid() and public.is_approved_seller(auth.uid()))
+    or public.is_admin(auth.uid())
+  )
+  with check (
+    (seller_id = auth.uid() and public.is_approved_seller(auth.uid()))
+    or public.is_admin(auth.uid())
+  );
 
 drop policy if exists "customers can manage their marketplace cart" on marketplace.cart_items;
 create policy "customers can manage their marketplace cart"

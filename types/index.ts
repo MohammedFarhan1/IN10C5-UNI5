@@ -1,4 +1,5 @@
 export type Role = "customer" | "seller" | "admin";
+export type AccountStatus = "pending" | "approved" | "rejected";
 
 export type ProductUnitStatus = "available" | "sold" | "delivered";
 export type OrderStatus = "ordered" | "shipped" | "delivered" | "cancelled";
@@ -25,8 +26,15 @@ export type UserProfile = {
   email: string;
   role: Role;
   full_name: string | null;
+  business_name: string | null;
+  spoc_name: string | null;
+  cin: string | null;
+  gst: string | null;
+  trademark_url: string | null;
+  document_url: string | null;
   mobile_number: string | null;
   address: string | null;
+  account_status: AccountStatus;
   created_at: string;
 };
 

@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth";
 const adminNav = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/users", label: "Users" },
+  { href: "/admin/sellers", label: "Seller approvals" },
   { href: "/admin/products", label: "Products" },
   { href: "/admin/orders", label: "Orders" }
 ];

@@ -24,11 +24,12 @@ export default async function AdminUsersPage() {
         eyebrow="User directory"
         title="Users"
       />
-      <Table headers={["Email", "Role", "Created", "Actions"]}>
+      <Table headers={["Email", "Role", "Status", "Created", "Actions"]}>
         {users.map((user) => (
           <tr key={user.id}>
             <td className="px-5 py-4 font-medium text-brand-ink">{user.email}</td>
             <td className="px-5 py-4"><StatusBadge value={user.role} /></td>
+            <td className="px-5 py-4"><StatusBadge value={user.account_status} /></td>
             <td className="px-5 py-4 text-slate-600">{formatDate(user.created_at)}</td>
             <td className="px-5 py-4">
               <div className="flex flex-wrap gap-2">

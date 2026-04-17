@@ -13,7 +13,10 @@ const toneMap: Record<string, string> = {
   partially_shipped: "bg-indigo-50 text-indigo-700 ring-indigo-100",
   customer: "bg-slate-100 text-slate-700 ring-slate-200",
   seller: "bg-teal-50 text-teal-700 ring-teal-100",
-  admin: "bg-rose-50 text-rose-700 ring-rose-100"
+  admin: "bg-rose-50 text-rose-700 ring-rose-100",
+  pending: "bg-amber-50 text-amber-700 ring-amber-100",
+  approved: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  rejected: "bg-rose-50 text-rose-700 ring-rose-100"
 };
 
 export function StatusBadge({ value }: { value: string }) {

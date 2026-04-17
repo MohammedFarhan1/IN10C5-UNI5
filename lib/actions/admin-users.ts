@@ -58,7 +58,8 @@ export async function createAdminUserAction(
     const { error: profileError } = await supabaseAdmin.from("users").upsert({
       id: data.user.id,
       email,
-      role
+      role,
+      account_status: "approved"
     });
 
     if (profileError) {
