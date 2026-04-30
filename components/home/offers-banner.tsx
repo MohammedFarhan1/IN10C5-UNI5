@@ -31,7 +31,7 @@ const slides = [
       "Use this slider area for sample images now, then swap in real offer artwork later.",
     image:
       "/images/offers-banner-sample-3.jpg",
-    accent: "from-slate-950/75 via-slate-900/35 to-transparent"
+    accent: "from-rose-950/70 via-rose-900/30 to-transparent"
   }
 ];
 
