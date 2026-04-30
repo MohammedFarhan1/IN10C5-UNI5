@@ -778,20 +778,30 @@ export async function getAdminSellerVerifications() {
 
   const sellers = asRecords(data).map(mapUserProfile);
 
-  return Promise.all(
-    sellers.map(async (seller) => {
-      const [trademarkSignedUrl, documentSignedUrl] = await Promise.all([
-        getSellerDocumentSignedUrl(seller.trademark_url),
-        getSellerDocumentSignedUrl(seller.document_url)
-      ]);
+  try {
+    return await Promise.all(
+      sellers.map(async (seller) => {
+        const [trademarkSignedUrl, documentSignedUrl] = await Promise.all([
+          getSellerDocumentSignedUrl(seller.trademark_url),
+          getSellerDocumentSignedUrl(seller.document_url)
+        ]);
 
-      return {
-        ...seller,
-        trademark_signed_url: trademarkSignedUrl,
-        document_signed_url: documentSignedUrl
-      } satisfies SellerVerificationRecord;
-    })
-  );
+        return {
+          ...seller,
+          trademark_signed_url: trademarkSignedUrl,
+          document_signed_url: documentSignedUrl
+        } satisfies SellerVerificationRecord;
+      })
+    );
+  } catch (error) {
+    console.error("Error fetching admin seller verifications:", error);
+    // Return sellers without signed URLs if there's an error
+    return sellers.map((seller) => ({
+      ...seller,
+      trademark_signed_url: null,
+      document_signed_url: null
+    } as SellerVerificationRecord));
+  }
 }
 
 export async function getAdminProducts() {

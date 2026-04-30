@@ -106,14 +106,20 @@ export async function getSellerDocumentSignedUrl(path: string | null, expiresInS
     return path;
   }
 
-  const supabaseAdmin = createSupabaseAdminClient();
-  const { data, error } = await supabaseAdmin.storage
-    .from(SELLER_DOCUMENTS_BUCKET)
-    .createSignedUrl(path, expiresInSeconds);
+  try {
+    const supabaseAdmin = createSupabaseAdminClient();
+    const { data, error } = await supabaseAdmin.storage
+      .from(SELLER_DOCUMENTS_BUCKET)
+      .createSignedUrl(path, expiresInSeconds);
 
-  if (error) {
+    if (error) {
+      console.warn(`Failed to generate signed URL for ${path}:`, error);
+      return null;
+    }
+
+    return data.signedUrl;
+  } catch (error) {
+    console.error(`Error generating signed URL for ${path}:`, error);
     return null;
   }
-
-  return data.signedUrl;
 }
